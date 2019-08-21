@@ -24,7 +24,8 @@ Implemented Statistical Significance Evaluation
 
 import sqlite3
 import csv
-from numpy import mean, std, sqrt, abs, array, percentile, max, min, zeros, sum, nan, ones, triu_indices
+from numpy import mean, std, sqrt, abs, array, percentile, max, min, zeros, sum, nan, ones, triu_indices, pi
+import numpy as np
 from copy import copy, deepcopy
 from itertools import islice, combinations
 from os.path import split, splitext
@@ -35,6 +36,7 @@ from scipy.stats import levene,f_oneway, ttest_ind_from_stats
 from statsmodels.stats.multicomp import MultiComparison
 from statsmodels.stats.libqsturng import psturng, qsturng
 from scipy.stats import f
+import decimal
 
 class DECA:
     '''
@@ -103,7 +105,7 @@ class DECA:
             if self.que is not None:
                 self.que.put(100)
         else:
-            with open(infile, 'r') as csvfile:
+            with open(infile, 'rU', encoding='utf-8-sig') as csvfile:
                 csvfile.seek(0)
                 has_header = csv.Sniffer().has_header(''.join([line.replace(" ", "") for line in csvfile]))
                 csvfile.seek(0)
@@ -113,9 +115,7 @@ class DECA:
                 else:
                     for n in range(1, 100):
                         csvfile.seek(0)
-                        print(n)
                         f = [line.replace(" ", "") for line in islice(csvfile, n, 100)]
-                        print(f[0])
                         if f[0] == '' or f[1] == '' or f[0].count(',')<=1:
                             continue
                         r = ''.join(f)
@@ -123,19 +123,31 @@ class DECA:
                         if has_header:
                             csvfile.seek(0)
                             header = list(islice(csvfile, n, n + 1))[0].split(',')
+                            print(header)
                             break
             csvfile.close()
             if n < 99:
                 header_position = n
-                if all(item in header for item in ['Exposure', 'Uptake']):
-                    print('File is DynamX Style')
+                for i in range(0,len(header)):
+                    header[i] = header[i].rstrip()
+                print(header)
+                if set(header)=={'Protein','Start','End','Sequence','Modification','Fragment','MaxUptake','MHP','State','Exposure','Center','Center SD','Uptake','Uptake SD','RT','RT SD'}:
+                    print('File is DynamX State Style')
                     self.filetype = 'CSV'
-                    self.readFile(infile, 'Waters')
-                elif all(item in header for item in ['timepoint', 'percentd_replicate']):
+                    self.readFile(infile, 'State')
+                elif set(header)=={'Protein','Start','End','Sequence','Modification','Fragment','MaxUptake','MHP','State','Exposure','File','z','RT','Inten','Center'}:
+                    print('File is DynamX Cluster Style')
+                    self.filetype = 'CSV'
+                    self.readFile(infile, 'Cluster')
+                elif all(item in header for item in
+                         ['peptide','charge','start','end','ms_rt_range','ms_score','features','monoisotopic',
+                          'project', 'sample','timepoint', 'rt_start_replicate','rt_end_replicate','centroid']):
                     print('File is HDXWorkbench Style')
                     self.readFile(infile, 'HDX', header_position)
                     self.filetype = 'CSV'
-                elif any(item in header for item in ['Uptake_0','Uptake_0s','Uptake_0m','Uptake_0h']):
+                elif all(item in header for item in
+                         ['Protein','Start','End','Sequence','Modification','Fragment','MaxUptake','MHP','State']) and \
+                        any(item in header for item in ['Uptake_0','Uptake_0s','Uptake_0m','Uptake_0h']):
                     print('File is Alternate Style')
                     self.filetype = 'CSV'
                     self.readFile(infile, 'ALT')
@@ -146,14 +158,13 @@ class DECA:
 
     # Reads data into master_csv
     def readFile(self, infile, ftype, header_position=None):
-        if ftype == 'Waters':
+        if ftype == 'State':
             exp_factors_set = set()
             self.pep_corrected = False
             row_count = sum(1 for row in open(infile))
-            with open(infile, 'r') as csvfile:
+            with open(infile, 'rU', encoding='utf-8-sig') as csvfile:
                 reader = csv.DictReader(csvfile)
                 count = 1
-                print(row_count)
                 for row in reader:
                     if self.que is not None:
                         self.que.put(count/(row_count-1) * 100)
@@ -195,15 +206,111 @@ class DECA:
                 self.cor_factor[float(i[0])] = float(i[1])
             rettimes2 = [i for i in self.rettimes if i[1] != '']
             self.seq_to_rt = achrom.get_RCs([str(i[0]) for i in rettimes2], [float(i[1]) for i in rettimes2],rcond=None)
-            print('read finished')
+            print('Finished Reading')
+
+        if ftype == 'Cluster':
+            exp_factors_set = set()
+            self.pep_corrected = False
+            row_count = sum(1 for row in open(infile))
+            peptides = {}
+            with open(infile, 'rU', encoding='utf-8-sig') as csvfile:
+                reader = csv.DictReader(csvfile)
+                count = 1
+                for row in reader:
+                    if self.que is not None:
+                        self.que.put(count/(row_count-1) * 100)
+                    row['size'] = int(row['End']) - int(row['Start']) + 1
+                    row['Start'] = int(row['Start'])
+                    row['End'] = int(row['End'])
+                    row['Protein'] = str(row['Protein'])
+                    row['Exposure'] = float(row['Exposure'])
+                    if 'Fragment' in row.keys():
+                        if row['Fragment'] != '':
+                            self.recombined = True
+                    else:
+                        row['Fragment'] = str('')
+                    up_count = 0
+                    for char in list(row['Sequence'])[1:]:
+                        if char != "P":
+                            up_count += 1
+                    row['MaxUptake'] = int(up_count)
+                    count = count + 1
+                    if 'Uptake_corr' in reader.fieldnames:
+                        if 'CorrectionFactor' in reader.fieldnames:
+                            row['PeptideCorrection'] = 1
+                            row['ExposureCorrection'] = row['CorrectionFactor']
+                        elif 'ExposureCorrection' in reader.fieldnames:
+                            if float(row['PeptideCorrection']) != 1:
+                                self.pep_corrected = True
+                        else:
+                            row['ExposureCorrection'] = round(float(row['Uptake'])/float(row['Uptake_corr']),3)
+                        exp_factors_set.add((row['Exposure'], row['ExposureCorrection']))
+                    self.rettimes.append((row['Sequence'],row['RT']))
+                    if (row['Protein'], row['Sequence'], row['Start'], row['End'], row['Fragment'], row['Modification']) not in peptides.keys():
+                        peptides[(row['Protein'], row['Sequence'], row['Start'], row['End'], row['Fragment'], row['Modification'])] = [row]
+                    else:
+                        peptides[(row['Protein'], row['Sequence'], row['Start'], row['End'], row['Fragment'], row['Modification'])].append(row)
+            print('Finished Reading')
+            for peptide in peptides:
+                states = set([row['State'] for row in peptides[peptide]])
+                for state in states:
+                    zeroes = [row for row in peptides[peptide] if row['State']==state and row['Exposure']==0]
+                    if len(zeroes)>0:
+                        center_list = [float(i['Center'])*float(i['z'])-(float(i['z'])-1)*1.00728 for i in zeroes]
+                        if len(list(set([row['Inten'] for row in zeroes]))) > 1:
+                            inten_list = [int(i['Inten']) for i in zeroes]
+                            weighted_stats = DescrStatsW(center_list, weights=inten_list, ddof=0)
+                            zero_center = float(weighted_stats.mean)
+                            print(zero_center)
+                            zero_centersd = float(weighted_stats.std)
+                        else:
+                            zero_center = mean(center_list)
+                            zero_centersd = std(center_list)
+                    exposures = set([row['Exposure'] for row in peptides[peptide]])
+                    for exposure in exposures:
+                        rows = [row for row in peptides[peptide] if row['State']==state and row['Exposure']==exposure]
+                        center_list = [float(i['Center'])*float(i['z'])-(float(i['z'])-1)*1.00728 for i in rows]
+                        if len(list(set([row['Inten'] for row in rows]))) > 1:
+                            inten_list = [float(i['Inten']) for i in rows]
+                            weighted_stats = DescrStatsW(center_list, weights=inten_list, ddof=0)
+                            center = float(weighted_stats.mean)
+                            centersd = float(weighted_stats.std)
+                        else:
+                            center = mean(center_list)
+                            centersd = std(center_list)
+                        newrow = rows[0]
+                        newrow['Center'] = center
+                        newrow['Center SD'] = centersd
+                        if len(zeroes) > 0:
+                            newrow['Uptake'] = (center - zero_center)
+                            newrow['Uptake SD'] = sqrt(centersd**2+zero_centersd**2)
+                        self.master_csv.append(newrow)
+            print('Finished filling Master_CSV')
+            if 'Uptake_corr' in list(self.master_csv[0].keys()):
+                self.corrected = 'Yes'
+                if any(item != 1 for item in [i[1] for i in exp_factors_set]):
+                    self.exp_corrected = True
+            exp_factors_list = [item[0] for item in list(exp_factors_set)]
+            if len(set([x for x in exp_factors_list if exp_factors_list.count(x) > 1]))>0:
+                self.merge_and_corrected = True
+            for i in sorted(list(exp_factors_set)):
+                self.cor_factor[float(i[0])] = float(i[1])
+            rettimes2 = [i for i in self.rettimes if i[1] != '']
+            self.seq_to_rt = achrom.get_RCs([str(i[0]) for i in rettimes2], [float(i[1]) for i in rettimes2],rcond=None)
+            print('Finished Reading')
 
         elif ftype == 'HDX':
             exp_factors_set = set()
             self.pep_corrected = False
-            with open(infile, 'rU') as csvfile:
+            row_count = sum(1 for row in open(infile))
+            peptides = {}
+            with open(infile, 'rU', encoding='utf-8-sig') as csvfile:
                 csvfile.seek(0)
+                count = 1
                 reader = csv.DictReader(islice(csvfile, header_position, None))
                 for row in reader:
+                    if self.que is not None:
+                        self.que.put(count/(row_count-1) * 100)
                     if row['timepoint'] == 'NA':
                         continue
                     row['Sequence'] = str(row['peptide'])
@@ -215,59 +322,70 @@ class DECA:
                     row['State'] = str(row['sample'])
                     row['RT'] = [(float(row['rt_end_replicate']) + float(row['rt_start_replicate'])) / 2]
                     row['RT SD'] = float()
-                    row['Center'] = [float(row['centroid']) * float(row['charge'])]
-                    row['Center SD'] = float()
+                    row['Center'] = float(row['centroid'])
                     row['Fragment'] = str('')
                     row['Modification'] = str(row['features'])
+                    row['Inten'] = row['high_intensity_replicate']
+                    row['z'] = float(row['charge'])
                     up_count = 0
                     for char in list(row['Sequence'])[1:]:
                         if char != "P":
                             up_count += 1
                     row['MaxUptake'] = int(up_count)
-                    row['Centroid_Uptake'] = [(float(row['centroid']) - float(row['mono_mz0'])) * float(row['charge'])]
-                    row['Centroid_Uptake_SD'] = float()
-                    row['Envelope_Uptake'] = [float(row['MaxUptake']) * float(row['percentd_replicate'])]
-                    row['Envelope_Uptake_SD'] = float()
-                    row['Uptake'] = float()
-                    row['Uptake SD'] = float()
-                    row['MHP'] = float(row['monoisotopic']) + 1.007
-
-                    matching_row = [i for i in self.master_csv if
-                                    (row['Start'] == i['Start']) and (row['End'] == i['End'])
-                                    and (row['Protein'] == i['Protein']) and (row['State'] == i['State']) and
-                                    (row['MHP'] == i['MHP']) and (row['Fragment'] == i['Fragment']) and
-                                    (row['Exposure'] == i['Exposure'])]
-                    if len(matching_row) > 1:
-                        print('Error: read_hdxworkbench, duplicate entries')
-                    elif len(matching_row) == 1:
-                        matching_row[0]['Center'].extend(row['Center'])
-                        matching_row[0]['RT'].extend(row['RT'])
-                        matching_row[0]['Centroid_Uptake'].extend(row['Centroid_Uptake'])
-                        matching_row[0]['Envelope_Uptake'].extend(row['Envelope_Uptake'])
+                    row['MHP'] = float(row['monoisotopic']) + 1.00728
+                    if (row['Protein'], row['Sequence'], row['Start'], row['End'], row['Fragment'], row['Modification']) not in peptides.keys():
+                        peptides[(row['Protein'], row['Sequence'], row['Start'], row['End'], row['Fragment'], row['Modification'])] = [row]
                     else:
-                        self.master_csv.append(row)
+                        peptides[(row['Protein'], row['Sequence'], row['Start'], row['End'], row['Fragment'], row['Modification'])].append(row)
 
                     if 'Uptake_corr' in reader.fieldnames:
                         exp_factors_set.add((row['Exposure'], row['ExposureCorrection']))
                         if float(row['PeptideCorrection']) != 1:
                             self.pep_corrected = True
-
+                    count += 1
                 if 'Uptake_corr' in reader.fieldnames:
                     self.corrected = 'Yes'
                     if any(item != 1 for item in [i[1] for i in exp_factors_set]):
                         self.exp_corrected = True
-
-            for row in self.master_csv:
-                row.update({'Center SD':std(row['Center']),
-                            'Center':mean(row['Center']),
-                            'RT SD':std(row['RT']),
-                            'RT':mean(row['RT']),
-                            'Centroid_Uptake_SD':std(row['Centroid_Uptake']),
-                            'Centroid_Uptake':mean(row['Centroid_Uptake']),
-                            'Envelope_Uptake_SD':std(row['Envelope_Uptake']),
-                            'Envelope_Uptake':mean(row['Envelope_Uptake']),
-                            'Uptake SD': round(row['Centroid_Uptake_SD'], 2),
-                            'Uptake':round(row['Centroid_Uptake'], 2)})
+            print('Finished Reading')
+            for peptide in peptides:
+                states = set([row['State'] for row in peptides[peptide]])
+                for state in states:
+                    zeroes = [row for row in peptides[peptide] if row['State'] == state and row['Exposure'] == 0]
+                    if len(zeroes) > 0:
+                        center_list = [float(i['Center']) * float(i['z']) - (float(i['z']) - 1) * 1.00728 for i in
+                                       zeroes]
+                        if len(list(set([row['Inten'] for row in zeroes])))>1:
+                            inten_list = [float(i['Inten']) for i in zeroes]
+                            weighted_stats = DescrStatsW(center_list, weights=inten_list,
+                                                         ddof=0)
+                            zero_center = float(weighted_stats.mean)
+                            zero_centersd = float(weighted_stats.std)
+                        else:
+                            zero_center = mean(center_list)
+                            zero_centersd = std(center_list)
+                    exposures = set([row['Exposure'] for row in peptides[peptide]])
+                    for exposure in exposures:
+                        rows = [row for row in peptides[peptide] if
+                                row['State'] == state and row['Exposure'] == exposure]
+                        center_list = [float(i['Center']) * float(i['z']) - (float(i['z']) - 1) * 1.00728 for i in
+                                       rows]
+                        if len(list(set([row['Inten'] for row in rows]))) > 1:
+                            inten_list = [float(i['Inten']) for i in rows]
+                            weighted_stats = DescrStatsW(center_list, weights=inten_list, ddof=0)
+                            center = float(weighted_stats.mean)
+                            centersd = float(weighted_stats.std)
+                        else:
+                            center = mean(center_list)
+                            centersd = std(center_list)
+                        newrow = rows[0]
+                        newrow['Center'] = center
+                        newrow['Center SD'] = centersd
+                        if len(zeroes) > 0:
+                            newrow['Uptake'] = (center - zero_center)
+                            newrow['Uptake SD'] = sqrt(centersd ** 2 + zero_centersd ** 2)
+                        self.master_csv.append(newrow)
+            print('Finished filling Master_CSV')
 
             for i in sorted(list(exp_factors_set)):
                 self.cor_factor[float(i[0])] = float(i[1])
@@ -427,16 +545,16 @@ class DECA:
             #             row['Uptake SD'] = 0
             # self.master_csv = master_csv
 
-        else:
+        elif ftype == 'ALT':
             exp_factors_set = set()
             self.pep_corrected = False
-            with open(infile, 'r') as csvfile:
+            with open(infile, 'rU', encoding='utf-8-sig') as csvfile:
                 reader = csv.DictReader(csvfile)
                 timepoints = {}
                 for row in reader:
                     if timepoints == {}:
                         for i in row.keys():
-                            if i[0:7] == 'Uptake_':
+                            if i[0:7] == 'Uptake_' and i[0:9]!='Uptake_SD':
                                 if i[-1] == 'h':
                                     timepoints[i] = (float(i[7:-1]) * 60)
                                 elif i[-1] == 'm':
@@ -445,11 +563,32 @@ class DECA:
                                     timepoints[i] = (float(i[7:-1]) / 60)
                                 else:
                                     print('Unrecognized Character')
+                    up_count = 0
+                    for char in list(row['Sequence'])[1:]:
+                        if char != "P":
+                            up_count += 1
+                    row['MaxUptake'] = int(up_count)
                     for item in timepoints.keys():
-                        row['Exposure'] = timepoints[item]
-                        row['Uptake'] = row[item]
-                        row['Uptake SD'] = row[str('UptakeSD_' + item[7:])]
-                        self.master_csv.append(row)
+                        self.master_csv.append({'size':int(row['End']) - int(row['Start']) + 1,
+                                                'Start':int(row['Start']),
+                                                'End':int(row['End']),
+                                                'Protein':str(row['Protein']),
+                                                'State':str(row['State']),
+                                                'Sequence':str(row['Sequence']),
+                                                'Modification': str(row['Modification']),
+                                                'Fragment':str(row['Fragment']),
+                                                'MaxUptake':int(row['MaxUptake']),
+                                                'MHP':float(row['MHP']),
+                                                'Exposure':float(timepoints[item]),
+                                                'Center':row[str('Center_' + item[7:])],
+                                                'Center SD':row[str('Center_SD_' + item[7:])],
+                                                'Uptake':row[item],
+                                                'Uptake SD':row[str('Uptake_SD_' + item[7:])],
+                                                'RT':row['RT'],
+                                                'RT SD':row['RT SD']})
+
+        else:
+            print('Unrecognized filetype')
 
     # Get protein sequence and organize master_csv into data_nest
     def organizeData(self):
@@ -465,7 +604,6 @@ class DECA:
         self.states = sorted(list(states_set))
         self.exposures = sorted(list(exposures_set))
         # Make Protein-separated peptide list
-
         protein_array = {}
         for protein in self.proteins:
             protein_array[protein] = []
@@ -1933,3 +2071,105 @@ def simultaneous_ci(q_crit, var, groupnobs): # from statmodels package
         w = sum1 * ones((2, 1)) / 2.
 
     return (q_crit / sqrt(2))*w
+
+aa_chem = \
+{"A":{'Formula':'C3H7NO2','Mass':89.09839,'C':3,'N':1,'O':2,'S':0,'H':7},
+"R":{'Formula':'C6H14N4O2','Mass':174.2118,'C':6,'N':4,'O':2,'S':0,'H':14},
+"N":{'Formula':'C4H8N2O3','Mass':132.12515,'C':4,'N':2,'O':3,'S':0,'H':8},
+"D":{'Formula':'C4H7NO4','Mass':133.10953,'C':4,'N':1,'O':4,'S':0,'H':7},
+"C":{'Formula':'C3H7NO2S','Mass':121.17439,'C':3,'N':1,'O':2,'S':1,'H':7},
+"Q":{'Formula':'C5H10N2O3','Mass':146.15297,'C':5,'N':2,'O':3,'S':0,'H':10},
+"E":{'Formula':'C5H9NO4','Mass':147.13735,'C':5,'N':1,'O':4,'S':0,'H':9},
+"G":{'Formula':'C2H5NO2','Mass':75.07057,'C':2,'N':1,'O':2,'S':0,'H':5},
+"H":{'Formula':'C6H9N3O2','Mass':155.16397,'C':6,'N':3,'O':2,'S':0,'H':9},
+"I":{'Formula':'C6H13NO2','Mass':131.18185,'C':6,'N':1,'O':2,'S':0,'H':13},
+"L":{'Formula':'C6H13NO2','Mass':131.18185,'C':6,'N':1,'O':2,'S':0,'H':13},
+"K":{'Formula':'C6H14N2O2','Mass':146.19724,'C':6,'N':2,'O':2,'S':0,'H':14},
+"M":{'Formula':'C5H11NO2S','Mass':149.23003,'C':5,'N':1,'O':2,'S':1,'H':11},
+"F":{'Formula':'C9H11NO2','Mass':165.20043,'C':9,'N':1,'O':2,'S':0,'H':11},
+"P":{'Formula':'C5H9NO2','Mass':115.13781,'C':5,'N':1,'O':2,'S':0,'H':9},
+"S":{'Formula':'C3H7NO3','Mass':105.09816,'C':3,'N':1,'O':3,'S':0,'H':7},
+"T":{'Formula':'C4H9NO3','Mass':119.12598,'C':4,'N':1,'O':3,'S':0,'H':9},
+"W":{'Formula':'C11H12N2O2','Mass':204.23902,'C':11,'N':2,'O':2,'S':0,'H':12},
+"Y":{'Formula':'C9H11NO3','Mass':181.2002,'C':9,'N':1,'O':3,'S':0,'H':11},
+"V": {'Formula':'C5H11NO2','Mass':117.15403,'C':5,'N':1,'O':2,'S':0,'H':11}}
+
+aa_mass = {'ave':{"C":12.0116,"N":14.0073,"O":15.9998,"H":1.0081,"S":32.076},
+           'mono':{"C":12.0000,"C13":13.00335484,"N":14.00307401,"N15":15.00010890,"O":15.99491462,"H":1.00782503,"S":31.97207069}}
+
+def resmass(aminoacid,aatype,rnd=4,HOH=False):
+    mass = aa_chem[aminoacid]["C"] * round(aa_mass[aatype]['C'],rnd) + \
+           aa_chem[aminoacid]["N"] * round(aa_mass[aatype]['N'],rnd) + \
+           aa_chem[aminoacid]["O"] * round(aa_mass[aatype]['O'],rnd) + \
+           aa_chem[aminoacid]["S"] * round(aa_mass[aatype]['S'],rnd) + \
+           aa_chem[aminoacid]["H"] * round(aa_mass[aatype]['H'],rnd)
+    if not HOH:
+        mass = mass - (round(aa_mass[aatype]['O'],rnd)+round(aa_mass[aatype]['H'],rnd)*2)
+    return mass
+
+def pepmass(peptide,aatype,rnd = 4, MHP=False):
+    mass=round(aa_mass[aatype]['O'],rnd)+round(aa_mass[aatype]['H'],rnd)*2
+    for i in list(peptide):
+        mass = mass + resmass(i,aatype,rnd = rnd)
+    if MHP:
+        mass = mass + round(aa_mass[aatype]['H'],rnd)
+    return mass
+
+def factorial(n): #estimates factorials
+    n = decimal.Decimal(n)
+    pi = decimal.Decimal(np.pi)
+    e = decimal.Decimal(np.e)
+    if n == 0:
+        return 1
+    else:
+        return decimal.Decimal(np.sqrt(2 * pi * n) * (n / e) ** n)
+
+def findMZ0(peptide,maxisotope,charge):
+    aadict={'C':0,'N':0,'O':0,'S':0,'H':0}
+    for aa in list(peptide):
+        for e in [i for i in aa_chem[aa].keys() if i in aadict.keys()]:
+            aadict[e] = aadict[e] + aa_chem[aa][e]
+    peaklist = []
+    c_fact = factorial(aadict['C'])
+    n_fact = factorial(aadict['N'])
+    for isotope in range(0,maxisotope+1): # sets isotope number
+        peak = 0
+        min_x = 0
+        max_x = isotope
+        if isotope > aadict['N']: # If isotope is higher than num Ns, set min_x to the amount over? (This is because x starts at minx.
+            # if minx is 0, the equation subtracts isotope from N, yielding a negative number. This limits N representation to minx.
+            min_x = isotope - aadict['N']
+        if isotope > aadict['C']: # If isotope is higher than number of Cs, it is unlikely to exist
+            max_x = aadict['C']
+        for x in range(min_x,max_x+1): #iterates combinations of N15 and C13
+            top_c = decimal.Decimal(0.989)**decimal.Decimal(aadict['C']-x)*decimal.Decimal(0.011)**decimal.Decimal(x) # calculates combined probabilities C
+            top_n = decimal.Decimal(0.9969)**decimal.Decimal(aadict['N']-(isotope-x))*decimal.Decimal(0.0036)**decimal.Decimal(isotope-x) # calculates combined probabilities N
+
+            # Not sure what is going on here
+            bottom_c= factorial(x)*factorial(aadict['C']-x)
+            bottom_n = factorial(isotope-x)*factorial(aadict['N']-(isotope-x))
+            c = (top_c/bottom_c)
+            n = (top_n/bottom_n)
+            thispeak = c * n # Combined C and N probability
+            peak = peak + thispeak # Adding up the various N and C combinations to yield the total probability of each isotopic peak
+        peak = peak * c_fact * n_fact # WHAT??? Is this the top of the probability equation?
+        peaklist.append(float(peak))
+
+    # I think this normalization is hiding my mistake
+    normalizedpeaklist = []
+    maxpeak = max(peaklist)
+    for i in peaklist:
+        normalizedpeaklist.append(i/maxpeak)
+
+    # Report mass and intensity for each peak
+    peaks = []
+    mono = pepmass(peptide,'mono',rnd = 6, MHP=False)
+    n=0
+    mz0 = (mono+charge)/charge
+    for i in normalizedpeaklist:
+        if i > 0.01:
+            mz = mz0 + float(n)/float(charge)
+            peaks.append((mz,i))
+        n = n + 1
+    d = DescrStatsW(data = [i[0] for i in peaks], weights = [i[1] for i in peaks])
+    return d.mean

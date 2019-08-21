@@ -1302,18 +1302,3 @@ class Progress():
         self.progbar.pack(side=Tk.LEFT,anchor=Tk.CENTER,expand=1,fill=Tk.BOTH)
         self.num_label = Tk.Label(self.frame, textvariable=self.dvar)
         self.num_label.pack(side=Tk.LEFT,anchor=Tk.CENTER,expand=1,fill=Tk.BOTH)
-
-    def check_que(self,callback):
-        while True:
-            try:
-                x = self.que.get_nowait()
-            except queue.Empty:
-                self.top.after(10, callback)
-                break
-            else:  # continue from the try suite
-                if x == -1:
-                    print('Finished')
-                    self.progbar.stop()
-                    break
-                else:
-                    self.dvar.set(x)

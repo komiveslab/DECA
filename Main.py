@@ -112,7 +112,7 @@ class Main():
     # Setup Drag and Drop to import files
     def drag_and_drop(self):
         self.view.file_list.drop_target_register(DND_FILES)
-        self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event.data[1:-1]))
+        self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event))
 
     # Pipes console messages
     def console_copy_action(self):
@@ -149,8 +149,8 @@ class Main():
         self.view.file_menu.add_command(label="Merge", command=self.merge)
         self.view.file_menu.add_command(label="Exit", command=lambda: self.root.destroy_window())
 
-        self.view.edit_menu.add_command(label="Rename File/Protein/State")
-        self.view.edit_menu.add_command(label="Delete Data")
+        self.view.edit_menu.add_command(label="Rename File/Protein/State", state="disabled")
+        self.view.edit_menu.add_command(label="Delete Data", state="disabled")
         self.view.edit_menu.add_command(label="Find Incomplete Data", state="disabled")
         self.view.edit_menu.add_command(label="Filter Data", state="disabled")
 
@@ -210,9 +210,12 @@ class Main():
             csv_file = FileDialog.askopenfilename(title="Choose CSV or DNX file",
                                                   filetypes=[('csv files', '*.csv'),('dnx files', '*.DnX'), ('all files', '*.*')], )
         else:
-            csv_file = item
-        print(csv_file)
+            if item.data[0] == '{':
+                csv_file = str(item.data[1:-1])
+            else:
+                csv_file = str(item.data)
         if csv_file != '':
+            print(csv_file)
             if ('Data' not in self.widgets):
                 self.data = Data(self)
             csv_file_name = str(splitext(split(csv_file)[1])[0])
@@ -225,38 +228,62 @@ class Main():
                         csv_file_name = csv_file_name + '(%s)' % n
                         n = n + 1
                     self.popup('Error!', 'Name renamed to:'+str(csv_file_name))
-                # pb = View.Progress(self.root,que)
                 self.view.pb.frame.pack(side=Tk.TOP)
                 def thread_queue():
-                    self.state_obj[csv_file_name] = DECA(csv_file,que=que)
+                    try:
+                        d = DECA(csv_file,que=que)
+                    except:
+                        print('Exception')
+                        self.view.file_list.bind('<ButtonRelease-1>', self.select_item)
+                        self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event))
+                        return
+                    self.state_obj[csv_file_name] = d
+                    if self.state_obj[csv_file_name].recombined:
+                        recombined = 'Yes'
+                    else:
+                        recombined = 'No'
+                    id = self.view.file_list.insert('', 'end', text=csv_file_name, values=(
+                        csv_file_name, str(', '.join(self.state_obj[csv_file_name].proteins)),
+                        str(', '.join(self.state_obj[csv_file_name].states)),
+                        str(', '.join([str(i) for i in self.state_obj[csv_file_name].exposures])),
+                        self.state_obj[csv_file_name].corrected, recombined))
+                    self.corrected = self.state_obj[csv_file_name].corrected
+                    self.view.file_list.selection_set(id)
+                    self.view.file_list.focus(id)
+                    self.select_item()
+                    self.file_list.append(csv_file)
+                    if self.state_obj[csv_file_name].filetype == 'CSV':
+                        self.rc = Replicates(self)
+                    self.view.file_list.bind('<ButtonRelease-1>', self.select_item)
+                    self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event))
+
+                def check_finished():
+                    while True:
+                        try:
+                            x = self.view.pb.que.get_nowait()
+                        except queue.Empty:
+                            if secondary_thread.is_alive():
+                                self.root.after(50,check_finished)
+                                break
+                            else:
+                                self.view.pb.progbar.stop()
+                                self.view.pb.frame.pack_forget()
+                                print('Secondary Thread Dead')
+                                break
+                        else:  # continue from the try suite
+                            if x == -1:
+                                self.view.pb.progbar.stop()
+                                self.view.pb.frame.pack_forget()
+                                print('Secondary Thread Finished')
+                                break
+                            else:
+                                self.view.pb.dvar.set(x)
+
                 secondary_thread = threading.Thread(target=thread_queue)
                 secondary_thread.start()
+
                 # check the Queue in 50ms
-                def check_finished():
-                    #if secondary_thread.is_alive():
-                    self.view.pb.check_que(check_finished)
-                    if not secondary_thread.is_alive():
-                        self.view.pb.frame.pack_forget()
-                        print('Secondary Thread Closed')
-                        if self.state_obj[csv_file_name].recombined:
-                            recombined = 'Yes'
-                        else:
-                            recombined = 'No'
-                        id = self.view.file_list.insert('', 'end', text=csv_file_name, values=(
-                            csv_file_name, str(', '.join(self.state_obj[csv_file_name].proteins)),
-                            str(', '.join(self.state_obj[csv_file_name].states)),
-                            str(', '.join([str(i) for i in self.state_obj[csv_file_name].exposures])),
-                            self.state_obj[csv_file_name].corrected, recombined))
-                        self.corrected = self.state_obj[csv_file_name].corrected
-                        self.view.file_list.selection_set(id)
-                        self.view.file_list.focus(id)
-                        self.select_item()
-                        self.file_list.append(csv_file)
-                        if self.state_obj[csv_file_name].filetype == 'CSV':
-                            self.rc = Replicates(self)
-                        self.view.file_list.bind('<ButtonRelease-1>', self.select_item)
-                        self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event.data[1:-1]))
-                self.root.after(10,check_finished)
+                self.root.after(50,check_finished)
             else: return
         else:
             self.popup("Open File Error", "No Item Chosen")
@@ -347,7 +374,7 @@ class Main():
     def save_data(self):
         filename = FileDialog.asksaveasfilename(title="Choose save location", defaultextension=".csv",
                                            initialfile=self.csvfile + (self.corrected == 'Yes') * "_Corrected")
-        self.state_obj[self.csvfile].export_data(filename)
+        self.state_obj[self.csvfile].exportData(filename)
 
     def on_exit(self):
         self.console = Console()
