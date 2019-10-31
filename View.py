@@ -939,14 +939,14 @@ class Plot():
             label_file_type.grid(row=rownum, column=0)
             label_file_type.configure(text='''Type:''')
 
+            file_type_str = Tk.StringVar()
             combobox_file_type = ttk.Combobox(frame)
             combobox_file_type.grid(row=rownum, column=1)
-            list_file_type = ["PNG", "SVG", "PDF"]
-            combobox_file_type.configure(values=list_file_type)
-            combobox_file_type.set('PNG')
+            list_file_type = ["EPS","PDF","PNG","PS","SVG","TIF"]
+            combobox_file_type.configure(values=list_file_type,textvariable=file_type_str)
+            combobox_file_type.set("TIF")
             combobox_file_type.configure(takefocus="")
             combobox_file_type.configure(cursor="xterm")
-            self.combobox_file_type = combobox_file_type
             rownum = rownum + 1
 
             button_cancel = ttk.Button(frame)
@@ -959,6 +959,8 @@ class Plot():
 
             self.top = top
             self.combobox_dpi = combobox_dpi
+            self.combobox_file_type = combobox_file_type
+            self.file_type_str = file_type_str
             self.button_cancel = button_cancel
             self.button_save = button_save
 

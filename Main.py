@@ -356,7 +356,8 @@ class Main():
     # Custom save dialog for MacOS
     def save_figure(self, dpival, fig): # Thanks to Donal Fellows https://stackoverflow.com/questions/52282334/tkfiledialog-does-not-show-file-extension-options-on-osx10-12-6
         root = Tk.Toplevel()
-        filetypes = "{{png files} *.png} {{svg files} *.svg} {{pdf files} *.pdf} {{all files} *}"
+        filetypes = "{{{eps files} *.eps} {{jpg files} *.jpg} {{pdf files} *.pdf} {png files} *.png} {{ps files} *.ps}" \
+                    " {{svg files} *.svg} {{tif files} *.tif} {{all files} *}"
         filename = root.tk.eval('::tk::dialog::file:: save -filetypes {' + filetypes + '}')
         if filename == "":
             filename = None
@@ -2218,22 +2219,34 @@ class Plot():
     # Save Dialog
     def save(self):
         def single():
-            filetype = str(self.psv.combobox_file_type.get())
+            filetype = str(self.psv.file_type_str.get())
+            print(filetype)
+            print("lower "+filetype.lower())
             dpival = float(self.psv.combobox_dpi.get())
             default_pep = self.selected_peptides[0][self.states[0]][0]
+            if str(default_pep['Fragment']) == "" and str(default_pep['Modification'])=="":
+                initpath = self.protein + "_" + str(default_pep['Start']) + "-" + str(default_pep['End']) + "." + \
+                           filetype.lower()
+            elif str(default_pep['Fragment']) == "" and str(default_pep['Modification']) != "":
+                initpath = self.protein + "_" + str(default_pep['Start']) + "-" + str(default_pep['End']) + "_" + \
+                           str(default_pep['Modification']) + "." + filetype.lower()
+            elif str(default_pep['Fragment']) != "" and str(default_pep['Modification']) == "":
+                initpath = self.protein + "_" + str(default_pep['Start']) + "-" + str(default_pep['End']) + "_" + \
+                           str(default_pep['Fragment']) + "." + filetype.lower()
+            else:
+                initpath = self.protein + "_" + str(default_pep['Start']) + "-" + str(default_pep['End']) + "_" + \
+                           str(default_pep['Fragment']) + "_" + str(default_pep['Modification']) + "." + filetype.lower()
+            print("Path "+initpath)
             savefile = FileDialog.asksaveasfilename(
                 title="Choose save location",
-                initialfile=self.protein + "_" + str(default_pep['Start']) + "-" + str(default_pep['End']) + "_" +
-                            str(default_pep['Fragment']) + "_" + str(
-                    default_pep['Modification']) + "." + filetype.lower(),
-                initialdir=expanduser('~'),
-                filetypes=((filetype, '*.' + filetype.lower()), ("all files", "*.*")))
+                initialfile=initpath,
+                initialdir=expanduser('~'))
             self.view.figure.savefig(savefile, dpi=dpival, transparent=True)
             self.psv.top.destroy()
         def multi():
             # Prompting save directory
             savedir = FileDialog.askdirectory(title="Choose save location", initialdir=expanduser('~'))
-            filetype = str(self.psv.combobox_file_type.get())
+            filetype = str(self.psv.file_type_str.get())
             dpival = float(self.psv.combobox_dpi.get())
             n = 0
             for i in self.selected_peptides:

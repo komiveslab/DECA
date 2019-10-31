@@ -75,6 +75,8 @@ class DECA:
                 self.assignIDs_CSV()
             if self.que is not None:
                 self.que.put(-1)
+        else:
+            self.filename = "merged"
 
     def dictify(self, order):
         newdict = {}
@@ -131,7 +133,8 @@ class DECA:
                 for i in range(0,len(header)):
                     header[i] = header[i].rstrip()
                 print(header)
-                if set(header)=={'Protein','Start','End','Sequence','Modification','Fragment','MaxUptake','MHP','State','Exposure','Center','Center SD','Uptake','Uptake SD','RT','RT SD'}:
+                if all(i in header for i in ['Protein','Start','End','Sequence','Modification','Fragment','MaxUptake','MHP','State',
+                             'Exposure','Center','Center SD','Uptake','Uptake SD','RT','RT SD']):
                     print('File is DynamX State Style')
                     self.filetype = 'CSV'
                     self.readFile(infile, 'State')
@@ -1377,6 +1380,7 @@ class DECA:
             self.cor_factor[float(i[0])] = float(i[1])
         self.organizeData()
         self.cleanFiles()
+        self.assignIDs_CSV()
 
     # Populate sequence of residues with the best peptide information at each location
     def assignData(self, protein, state1, exposure, state2=None):
