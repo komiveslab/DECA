@@ -1,3 +1,11 @@
+# 2020-05-XX Added details to map names
+# 2020-05-XX Added blue-white-magenta color scheme
+# 2020-05-XX Added Custom ranges for maps
+
+# 2020-06-04 Adjusted maps to starts at first covered residue
+# 2020-06-04 Adjusted maps to fix colorbars on different linelengths
+
+print("Loading, please wait")
 import View
 from Model import *
 from operator import itemgetter
@@ -69,7 +77,7 @@ class Main():
         self.widget_dict = {}
         self.state_obj = {}
         self.file_list = []
-
+        self.dir = ''
         # Initialize Main Window
         self.view = View.Files(que)
         self.widgets.append('Main')
@@ -252,8 +260,6 @@ class Main():
                     self.view.file_list.focus(id)
                     self.select_item()
                     self.file_list.append(csv_file)
-                    if self.state_obj[csv_file_name].filetype == 'CSV':
-                        self.rc = Replicates(self)
                     self.view.file_list.bind('<ButtonRelease-1>', self.select_item)
                     self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event))
 
@@ -306,6 +312,7 @@ class Main():
             self.data = Data(self)
         self.curitem = self.view.file_list.focus()
         self.csvfile = self.view.file_list.item(self.curitem)['text']
+        self.dir = split(self.state_obj[self.csvfile].filename)[0]
         if self.csvfile != '':
             self.corrected = self.view.file_list.set(self.curitem, 'xCorrected')
             self.data.delete()
@@ -361,6 +368,8 @@ class Main():
         filename = root.tk.eval('::tk::dialog::file:: save -filetypes {' + filetypes + '}')
         if filename == "":
             filename = None
+        if split(filename)[0] != "":
+            self.dir = split(filename)[0]
         fig.savefig(filename, dpi=dpival, transparent=True)
         root.destroy()
 
@@ -374,8 +383,13 @@ class Main():
     # Export data to CSV
     def save_data(self):
         filename = FileDialog.asksaveasfilename(title="Choose save location", defaultextension=".csv",
-                                           initialfile=self.csvfile + (self.corrected == 'Yes') * "_Corrected")
+                                                initialfile=self.csvfile + (self.corrected == 'Yes') * "_Corrected",
+                                                initialdir=self.dir)
+        if split(filename)[0] != "":
+            self.dir = split(filename)[0]
         self.state_obj[self.csvfile].exportData(filename)
+        # 2020-05-XX Create peptides for each individual plot
+        # self.state_obj[self.csvfile].exportPlotData(filename)
 
     def on_exit(self):
         self.console = Console()
@@ -1008,7 +1022,6 @@ class Replicates():
             for j in list(self.dict_reps[i].keys()):
                 self.dict_reps[i][j] = int(cor_dict[str(i)+'-'+str(j)])
         self.main.state_obj[self.main.csvfile].replicates = self.dict_reps
-        print(self.dict_reps)
         self.main.on_closing(self.view.top, 'Replicates')
 
 class Correct():
@@ -1125,6 +1138,8 @@ class Significance():
     # Initialize Significance Window, Bind Exposure selection, Start right click menu
     def __init__(self,main):
         print('initiating sig')
+        if main.state_obj[main.csvfile].filetype == 'CSV':
+            main.rc = Replicates(main)
         # Initialize Viewer
         main.widgets.append('Significance')
         self.main = main
@@ -2358,7 +2373,7 @@ class Map():
                                           ['Uptake', 'SD', 'Uptake Diff',
                                            'Fractional Uptake', 'Fractional SD (RSD)',
                                            'Fractional Uptake Diff'])
-        self.view.type_combobox.bind("<<ComboboxSelected>>", lambda e: self.selected())
+        self.view.type_combobox.bind("<<ComboboxSelected>>", lambda e: self.rep_selected())
         self.view.type_combobox.configure(textvariable=self.representation)
         self.view.type_combobox.set('Fractional Uptake')
         self.view.protein_combobox.configure(values=self.proteins)
@@ -2373,18 +2388,20 @@ class Map():
         self.view.exposure_combobox.configure(values=self.exposures)
         self.view.exposure_combobox.configure(textvariable=self.exposure)
         self.view.exposure_combobox.set(str(max([float(i) for i in main.exposuresvar.get()])))
+        cmap1 = mcolors.LinearSegmentedColormap.from_list("mycmap", ["blue", "white", "magenta"])
         self.cmaps = {'Pink-Green': 'PiYG', 'Purple-Green': 'PRGn', 'Brown-BlueGreen': 'BrBG', 'Tan-Purple': 'PuOr',
                  'Red-Black': 'RdGy', 'Red-Blue': 'RdBu', 'Red-Yellow-Blue': 'RdYlBu', 'Red-Yellow-Green': 'RdYlGn',
                  'Spectral': 'Spectral', 'Cool-Warm': 'coolwarm', 'Blue-Red': 'bwr', 'DarkBlue-DarkRed': 'seismic',
                  'Red-Purple Rainbow': 'gist_rainbow', 'Blue-Red Rainbow': 'rainbow',
-                 'DarkBlue-DarkRed Rainbow': 'jet'}
+                 'DarkBlue-DarkRed Rainbow': 'jet','Blue-White-Magenta':cmap1}
         self.view.color_combobox.configure(values=list(self.cmaps.keys()))
         self.view.color_combobox.configure(textvariable=self.color)
         self.view.color_combobox.set('Blue-Red')
         self.reverse = Tk.IntVar()
         self.view.reverse_button.configure(variable=self.reverse)
         self.reverse.set(0)
-        self.view.range_combobox.configure(values=['Fit to Data', 'Full Range', 'Half Range'])
+        self.view.range_combobox.bind("<<ComboboxSelected>>", lambda e: self.range_selected())
+        self.view.range_combobox.configure(values=['Fit to Data', 'Full Range', 'Half Range', 'Custom'])
         self.view.range_combobox.configure(textvariable=self.range)
         self.view.range_combobox.set('Fit to Data')
         self.xlim = Tk.StringVar()
@@ -2396,7 +2413,7 @@ class Map():
         print('finished initiating map')
 
     # Updates Widgets depending on the representation selection
-    def selected(self):
+    def rep_selected(self):
         selection = self.representation.get()
         if selection in ['Uptake Diff','Fractional Uptake Diff']:
             self.view.state2_combobox.configure(values=self.states)
@@ -2410,10 +2427,22 @@ class Map():
             self.view.state2_label.configure(text='''''')
             self.view.state2_combobox.set(['None'])
 
+    def range_selected(self):
+        selection = self.range.get()
+        if selection == 'Custom':
+            self.view.min_range['state'] = 'normal'
+            self.view.max_range['state'] = 'normal'
+            self.view.min_range.insert(0, 0)
+            self.view.max_range.insert(0, 1)
+        else:
+            self.view.min_range['state'] = 'disabled'
+            self.view.max_range['state'] = 'disabled'
+
     # Classified Map object allows for creation of multiple maps
     class map():
         # Initializes plot and right click menu
         def __init__(self, map_type, parent):
+            self.parent = parent
             self.map_type = map_type
             self.data_type = str(parent.representation.get())
             self.protein = str(parent.protein.get())
@@ -2486,15 +2515,19 @@ class Map():
             if self.data_type in ['Uptake Diff', 'Fractional Uptake Diff']:
                 savefile = FileDialog.asksaveasfilename(
                     title="Choose save location",
-                    initialfile=self.protein + "_" + str(self.state) + "-" + str(self.state2) + "_Map.png",
-                    initialdir=expanduser('~'),
+                    initialfile=self.protein + "_" + str(self.state) + "-" + str(self.state2) + "_" + str(self.exposure)+"_Map.png",
+                    initialdir=self.parent.main.dir,
                     filetypes=(("PNG", '*.png'), ("all files", "*.*")))
             else:
                 savefile = FileDialog.asksaveasfilename(
                     title="Choose save location",
-                    initialfile=self.protein + "_" + str(self.state) + "_Map.png",
-                    initialdir=expanduser('~'),
+                    initialfile=self.protein + "_" + str(self.state) + "_" + str(self.exposure) + "_Map.png",
+                    initialdir=self.parent.main.dir,
                     filetypes=(("PNG", '*.png'), ("all files", "*.*")))
+            if split(savefile)[0] != "":
+                self.parent.main.dir = split(savefile)[0]
+            if str(splitext(split(savefile)[1])[1]).lower() != '.png':
+                savefile = savefile + '.png'
             fig.savefig(savefile, dpi=300, transparent=True)
             plt.close()
 
@@ -2519,14 +2552,26 @@ class Map():
                 values = [i['reluptake'] for i in self.pepdict]
                 if self.data_range in ['Fit to Data', 'Full Range', 'Half Range']:
                     color_values = (min(values), max(values))
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
             elif self.data_type == 'SD':
                 values = [i['relsd'] for i in self.pepdict]
                 if self.data_range in ['Fit to Data', 'Full Range', 'Half Range']:
                     color_values = (min(values), max(values))
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
             elif self.data_type == 'Uptake Diff':
                 values = [i['uptakediff'] for i in self.pepdict]
                 if self.data_range in ['Fit to Data', 'Full Range', 'Half Range']:
                     color_values = (min(values), max(values))
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
             elif self.data_type == 'Fractional Uptake':
                 values = [i['fracuptake'] for i in self.pepdict]
                 if self.data_range in ['Fit to Data']:
@@ -2535,6 +2580,10 @@ class Map():
                     color_values = (0, 1)
                 elif self.data_range in ['Half Range']:
                     color_values = (0, 0.5)
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
             elif self.data_type == 'Fractional SD (RSD)':
                 values = [i['fracsd'] for i in self.pepdict]
                 if self.data_range in ['Fit to Data']:
@@ -2543,6 +2592,10 @@ class Map():
                     color_values = (0, 1)
                 elif self.data_range in ['Half Range']:
                     color_values = (0, 0.5)
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
             elif self.data_type == 'Fractional Uptake Diff':
                 values = [i['fracuptakediff'] for i in self.pepdict]
                 if self.data_range in ['Fit to Data']:
@@ -2551,6 +2604,10 @@ class Map():
                     color_values = (-1, 1)
                 elif self.data_range in ['Half Range']:
                     color_values = (-0.5, 0.5)
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
             else:
                 print("Type Error")
             if color_values[0] == 0 and color_values[1] == 0:
@@ -2692,6 +2749,8 @@ class Map():
                             self.seq_nest2[(item['pepmin'], item['pepmax'])] = [item['pos']]
 
             self.sequence = self.obj.sequences[self.protein]
+            self.firstpos = min([i for i,j in enumerate(self.sequence) if j != "X"])
+            self.sequence = self.sequence[self.firstpos:]
 
         # Determines the height of the map depending on the line width, sequence length, and peptide coverage
         def determine_levels(self):
@@ -2749,8 +2808,9 @@ class Map():
                         self.vertices += [(2 * (x + self.xpad), 2 * (self.ycurlevel + 0.1)),
                                           (2 * (x + self.xpad), 2 * (self.ycurlevel - 0.1))]
                         self.codes += [Path.MOVETO, Path.LINETO]
-                        if (m + 1) % 10 == 0:
-                            axis.annotate(str(m + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                        if (m + 1 + self.firstpos) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
                                           color='black', fontsize=self.textsize, horizontalalignment='center',
                                           verticalalignment='bottom', family='monospace')
 
@@ -2773,8 +2833,9 @@ class Map():
                         self.vertices += [(2 * (x + self.xpad), 2 * (self.ycurlevel + 0.1)),
                                           (2 * (x + self.xpad), 2 * (self.ycurlevel - 0.1))]
                         self.codes += [Path.MOVETO, Path.LINETO]
-                        if (m + 1) % 10 == 0:
-                            axis.annotate(str(m + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                        if (m + 1 + self.firstpos) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
                                           color='black', fontsize=self.textsize, horizontalalignment='center',
                                           verticalalignment='bottom', family='monospace')
                     for m in range(n * self.line_length, self.seqlength):
@@ -2804,8 +2865,9 @@ class Map():
                                       color='black', fontsize=self.textsize, horizontalalignment='center',
                                       verticalalignment='center',
                                       family='monospace')
-                        if (m + 1) % 10 == 0:
-                            axis.annotate(str(m + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                        if (m + 1 + self.firstpos) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
                                           color='black', fontsize=self.textsize*0.75, horizontalalignment='center',
                                           verticalalignment='center', family='monospace')
                 # Conditions for final line
@@ -2816,8 +2878,9 @@ class Map():
                                       color='black', fontsize=self.textsize, horizontalalignment='center',
                                       verticalalignment='center',
                                       family='monospace')
-                        if (m + 1) % 10 == 0:
-                            axis.annotate(str(m + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                        if (m + 1 + self.firstpos) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
                                           color='black', fontsize=self.textsize*0.75, horizontalalignment='center',
                                           verticalalignment='center', family='monospace')
                 self.ycurlevel = self.ycurlevel - (redundancy + self.spacing)
@@ -2831,14 +2894,16 @@ class Map():
                     codes = []
                     n = 0
                     peplevel = self.level_dict[(pep['Start'], pep['End'], pep['Fragment'])]
-                    if int((pep['Start'] - 1) / self.line_length) != int((pep['End'] - 1) / self.line_length):
-                        level = int((pep['Start'] - 1) / self.line_length) + 1
+                    # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
+                    # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
+                    if int((pep['Start']-self.firstpos-1) / self.line_length) != int((pep['End']-self.firstpos-1) / self.line_length):
+                        level = int((pep['Start']-self.firstpos-1) / self.line_length) + 1
                         yheight1 = peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level + 1)]) + level * self.spacing) + 2
                         yheight2 = peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level + 2)]) + (level + 1) * self.spacing) + 2
-                        start50 = (pep['Start'] - 1) % self.line_length + self.xpad
-                        stop50 = (pep['End'] - 1) % self.line_length + 1
+                        start50 = (pep['Start']-self.firstpos-1) % self.line_length + self.xpad
+                        stop50 = (pep['End']-self.firstpos-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2 * (self.line_length + self.xpad), 2 * yheight1), (2 * start50, 2 * yheight1),
                                      (2 * start50, 2 * (yheight1 + 0.75)),
@@ -2847,11 +2912,11 @@ class Map():
                                      (2 * stop50, 2 * (yheight2 + 0.75)),
                                      (2 * self.xpad, 2 * (yheight2 + 0.75))]
                     else:
-                        level = int((pep['Start'] - 1) / self.line_length) + 1
+                        level = int((pep['Start'] - self.firstpos-1) / self.line_length) + 1
                         yheight = peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level + 1)]) + level * self.spacing) + 2
-                        start50 = (pep['Start'] - 1) % self.line_length + self.xpad
-                        stop50 = (pep['End'] - 1) % self.line_length + 1
+                        start50 = (pep['Start'] - self.firstpos-1) % self.line_length + self.xpad
+                        stop50 = (pep['End'] - self.firstpos-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2 * start50, 2 * yheight), (2 * stop50, 2 * yheight),
                                      (2 * stop50, 2 * (yheight + 0.75)),
@@ -2890,21 +2955,23 @@ class Map():
                     vertices = []
                     codes = []
                     self.redundancy=1
-                    if int((start - 1) / self.line_length) != int((end - 1) / self.line_length):  # If peptide starts and ends on different levels
-                        level = int((start - 1) / self.line_length) + 1  # Level is vertical position at various sequence fragments
+                    # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
+                    # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
+                    if int((start - self.firstpos-1) / self.line_length) != int((end - self.firstpos-1) / self.line_length):  # If peptide starts and ends on different levels
+                        level = int((start - self.firstpos-1) / self.line_length) + 1  # Level is vertical position at various sequence fragments
                         yheight1 = self.ymax - (level * (self.redundancy + self.spacing)) + 2  # Height results from level, redundancy(highest n value) and spacing
                         yheight2 = self.ymax - ((level + 1) * (self.redundancy + self.spacing)) + 2  # Height position at second level, hence, level+1
-                        start50 = (start - 1) % self.line_length + self.xpad  # Residue 50 on a line of 1-50 should start at the end of the line, not the beginning of the next
-                        stop50 = (end - 1) % self.line_length + 1  # Stop includes stop residue, hence +1
+                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad  # Residue 50 on a line of 1-50 should start at the end of the line, not the beginning of the next
+                        stop50 = (end - self.firstpos-1) % self.line_length + 1  # Stop includes stop residue, hence +1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2*(self.line_length + self.xpad), 2*yheight1), (2*start50, 2*yheight1), (2*start50, 2*(yheight1 + 2)),
                                      (2*(self.line_length + self.xpad), 2*(yheight1 + 2)),
                                      (2*self.xpad, 2*yheight2), (2*stop50, 2*yheight2), (2*stop50, 2*(yheight2 + 2)), (2*self.xpad, 2*(yheight2 + 2))]
                     else:
-                        level = int((start - 1) / self.line_length) + 1
+                        level = int((start - self.firstpos-1) / self.line_length) + 1
                         yheight = self.ymax - (level * (self.redundancy + self.spacing)) + 2
-                        start50 = (start - 1) % self.line_length + self.xpad
-                        stop50 = (end - 1) % self.line_length + 1
+                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad
+                        stop50 = (end - self.firstpos-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2*start50, 2*yheight), (2*stop50, 2*yheight), (2*stop50, 2*(yheight + 2)),
                                      (2*start50, 2*(yheight + 2)),
@@ -2938,16 +3005,18 @@ class Map():
         def add_peptides_dnx(self, axis):
             # Creating Boxes
             if self.map_type == 'Coverage':
+                # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
+                # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
                 for pep in self.pepdict:
                     vertices = []
                     codes = []
-                    stretch = int((pep['End'] - 1) / self.line_length) - int((pep['Start'] - 1) / self.line_length)
+                    stretch = int((pep['End'] - self.firstpos-1) / self.line_length) - int((pep['Start'] - self.firstpos-1) / self.line_length)
                     peplevel = self.level_dict[(pep['Start'], pep['End'], pep['Fragment'])]
                     if stretch > 0:
-                        level = int((pep['Start'] - 1) / self.line_length) + 1
+                        level = int((pep['Start'] - self.firstpos-1) / self.line_length) + 1
                         yheight1 = -peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level)]) + (level) * self.spacing) + 0.5
-                        start50 = (pep['Start'] - 1) % self.line_length + self.xpad
+                        start50 = (pep['Start'] - self.firstpos-1) % self.line_length + self.xpad
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2 * (self.line_length + self.xpad), 2 * yheight1), (2 * start50, 2 * yheight1),
                                      (2 * start50, 2 * (yheight1 + 0.75)),
@@ -2963,17 +3032,17 @@ class Map():
                                          (2 * (self.line_length + self.xpad), 2 * (yheight + 0.75))]
                         yheight2 = -peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level+stretch)]) + (level + stretch) * self.spacing) + 0.5
-                        stop50 = (pep['End'] - 1) % self.line_length + 1
+                        stop50 = (pep['End'] - self.firstpos-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2 * self.xpad, 2 * yheight2), (2 * stop50, 2 * yheight2),
                                      (2 * stop50, 2 * (yheight2 + 0.75)),
                                      (2 * self.xpad, 2 * (yheight2 + 0.75))]
                     else:
-                        level = int((pep['Start'] - 1) / self.line_length) + 1
+                        level = int((pep['Start'] - self.firstpos-1) / self.line_length) + 1
                         yheight = -peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level)]) + level * self.spacing) + 0.5
-                        start50 = (pep['Start'] - 1) % self.line_length + self.xpad
-                        stop50 = (pep['End'] - 1) % self.line_length + 1
+                        start50 = (pep['Start'] - self.firstpos-1) % self.line_length + self.xpad
+                        stop50 = (pep['End'] - self.firstpos-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2 * start50, 2 * yheight), (2 * stop50, 2 * yheight),
                                      (2 * stop50, 2 * (yheight + 0.75)),
@@ -3005,6 +3074,8 @@ class Map():
                     axis.add_patch(
                         PathPatch(Path(vertices, codes), facecolor=color, linewidth=1, edgecolor='grey'))
             elif self.map_type == 'Heat':
+                # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
+                # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
                 for peptide in self.seq_nest2.keys():
                     pep = [n for n in self.pepdict if (n["Start"] == peptide[0] and n['End'] == peptide[1])][0]
                     start = min(self.seq_nest2[peptide])
@@ -3013,11 +3084,11 @@ class Map():
                     codes = []
                     self.redundancy=1
 
-                    stretch = int((end - 1) / self.line_length) - int((start - 1) / self.line_length)
+                    stretch = int((end - self.firstpos-1) / self.line_length) - int((start - self.firstpos-1) / self.line_length)
                     if stretch > 0:
-                        level = int((start - 1) / self.line_length) + 1
+                        level = int((start - self.firstpos-1) / self.line_length) + 1
                         yheight1 = self.ymax - (level * (self.redundancy + self.spacing))+0.5
-                        start50 = (start - 1) % self.line_length + self.xpad
+                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2*(self.line_length + self.xpad), 2*yheight1), (2*start50, 2*yheight1), (2*start50, 2*(yheight1 + 2)),
                                      (2*(self.line_length + self.xpad), 2*(yheight1 + 2))]
@@ -3029,14 +3100,14 @@ class Map():
                                          (2 * self.xpad, 2 * (yheight + 0.75)),
                                          (2 * (self.line_length + self.xpad), 2 * (yheight + 0.75))]
                         yheight2 = self.ymax - ((level + stretch) * (self.redundancy + self.spacing)) + 0.5
-                        stop50 = (end - 1) % self.line_length + 1
+                        stop50 = (end - self.firstpos-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2*self.xpad, 2*yheight2), (2*stop50, 2*yheight2), (2*stop50, 2*(yheight2 + 2)), (2*self.xpad, 2*(yheight2 + 2))]
                     else:
-                        level = int((start - 1) / self.line_length) + 1
+                        level = int((start - self.firstpos-1) / self.line_length) + 1
                         yheight = self.ymax - (level * (self.redundancy + self.spacing))+0.5
-                        start50 = (start - 1) % self.line_length + self.xpad
-                        stop50 = (end - 1) % self.line_length + 1
+                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad
+                        stop50 = (end - self.firstpos-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2*start50, 2*yheight), (2*stop50, 2*yheight), (2*stop50, 2*(yheight + 2)),
                                      (2*start50, 2*(yheight + 2)),
@@ -3081,8 +3152,9 @@ class Map():
                         (self.line_length - 25, 0), (self.line_length - 25, -4)]
             patch = PathPatch(Path(col_vert, col_code), facecolor='none', edgecolor='grey')
             axis.add_patch(patch)
+            # Fixed 2020-06-04 for colorbar linelength issue
             im = axis.imshow([[0, 1], [0., 1]], interpolation='bilinear', aspect='auto',
-                             extent=(0, 2 * self.line_length, -4, 0), cmap=self.newmap,
+                             extent=(self.line_length - 25, self.line_length + 25, -4, 0), cmap=self.newmap,
                              clip_path=patch, clip_on=True)
             axis.annotate(str(round(self.color_values[0],2)), (self.line_length - 30, -2),
                           color='black', fontsize=self.textsize, horizontalalignment='center',
@@ -3547,7 +3619,7 @@ class PML():
         self.view.combobox_exposure.configure(values = self.exposures)
         self.view.combobox_exposure.configure(textvariable = self.exposure)
         self.view.button_pdb.configure(command = lambda: self.load_pdb(), state='disabled')
-        self.view.combobox_color.configure(values = ['red_white_blue', 'blue_white_red', 'rainbow', 'rainbow_rev'])
+        self.view.combobox_color.configure(values = ['red_white_blue', 'blue_white_red', 'rainbow', 'rainbow_rev',])
         self.view.combobox_color.configure(textvariable = self.color)
         self.view.combobox_color.set('blue_white_red')
         self.view.combobox_range.configure(values = ['Fit to Data', 'Full Range', 'Half Range'])
@@ -3555,8 +3627,7 @@ class PML():
         self.view.combobox_range.set('Half Range')
         self.view.button_save.configure(command = lambda: self.save(self.representation.get()))
         self.view.button_help.configure(command=lambda: self.main.help('7) Pymol Scripts'))
-        if not main.frames:
-            self.view.top.protocol("WM_DELETE_WINDOW", lambda: main.on_closing(self.view.top, 'PML'))
+        self.view.top.protocol("WM_DELETE_WINDOW", lambda: main.on_closing(self.view.top, 'PML'))
 
     # Updates widgets based on representation selection
     def selected(self):
@@ -3581,14 +3652,14 @@ class PML():
         if type in ['Uptake Diff','Fractional Uptake Diff']:
             name = str(type).replace(' ','')+'_'+str(self.state1.get()) + '-' + str(self.state2.get()) + '_' + str(self.protein.get()) + '_' + str(
                 self.exposure.get()) + 'min'
-            self.main.state_obj[self.main.csvfile].export_pymol(
+            self.main.state_obj[self.main.csvfile].exportPymol(
                 self.main.corrected, self.state1.get(), self.state2.get(), self.protein.get(), self.exposure.get(),
                 self.view.entry_protein.get(), self.view.entry_chain.get(), type, self.color.get(), self.range.get(),
                 FileDialog.asksaveasfilename(title="Choose save location", defaultextension=".pml", initialfile=name))
 
         else:
             name = str(type).replace(' ','')+'_'+str(self.state1.get())+'_'+str(self.protein.get())+'_'+str(self.exposure.get())+'min'
-            self.main.state_obj[self.main.csvfile].export_pymol(
+            self.main.state_obj[self.main.csvfile].exportPymol(
                 self.main.corrected, self.state1.get(), None, self.protein.get(), self.exposure.get(),
                 self.view.entry_protein.get(), self.view.entry_chain.get(), type, self.color.get(), self.range.get(),
                 FileDialog.asksaveasfilename(title="Choose save location", defaultextension=".pml", initialfile=name))

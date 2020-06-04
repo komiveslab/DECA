@@ -1,3 +1,4 @@
+# 2020-06-04 Updated EditableTreeview to fix Back Exchange and Replicate tables
 try:
     import Tkinter as tk
     import ttk
@@ -189,8 +190,10 @@ class EditableTreeview(ttk.Treeview):  # Based on code from https://github.com/a
     def list_dict(self):
         self.event_generate('<Unmap>')
         treedict = {}
+        cols = self.__get_display_columns()
         for i in self.get_children():
-            treedict[str('-'.join(self.item(i)['values'][0:-1]))] = float(self.item(i)['values'][-1])
+            # 2020-06-04 Updated to fix Back Exchange and Replicate tables
+            treedict[str('-'.join([str(i) for i in self.item(i)['values'][0:-1]]))] = float(self.item(i)['values'][-1])
         return treedict
 
     def inplace_entry(self, col, item):

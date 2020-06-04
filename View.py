@@ -1,3 +1,5 @@
+# 2020-05-XX Moved Replicates prompt to Statistics window
+# 2020-05-XX Added Custom range for maps
 from ExtraWidgets import *
 from sys import platform
 from TkinterDnD2 import *
@@ -1036,11 +1038,25 @@ class Map():
         range_combobox.grid(row=8,column=1)
         range_combobox['state'] = 'readonly'
 
+        min_label = Tk.Label(frame1, text='''Custom Min:''')
+        min_label.grid(row=9, column=0)
+
+        max_label = Tk.Label(frame1, text='''Custom Max:''')
+        max_label.grid(row=10, column=0)
+
+        min_range = Tk.Entry(frame1)
+        min_range.grid(row=9, column=1)
+        min_range['state'] = 'disabled'
+
+        max_range = Tk.Entry(frame1)
+        max_range.grid(row=10, column=1)
+        max_range['state'] = 'disabled'
+
         xlim_label = Tk.Label(frame1,text='''Row Length:''')
-        xlim_label.grid(row=9,column=0)
+        xlim_label.grid(row=11,column=0)
 
         xlim_entry = Tk.Entry(frame1)
-        xlim_entry.grid(row=9,column=1)
+        xlim_entry.grid(row=11,column=1)
 
         cov_button = ttk.Button(frame2,text='''Coverage Map''')
         cov_button.pack(side=Tk.LEFT)
@@ -1070,6 +1086,8 @@ class Map():
         self.cov_button = cov_button
         self.heat_button = heat_button
         self.reverse_button = reverse_button
+        self.min_range = min_range
+        self.max_range = max_range
 
 class Butterfly():
     def __init__(self, main):

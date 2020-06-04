@@ -28,7 +28,8 @@ from numpy import mean, std, sqrt, abs, array, percentile, max, min, zeros, sum,
 import numpy as np
 from copy import copy, deepcopy
 from itertools import islice, combinations
-from os.path import split, splitext
+from os.path import split, splitext, join
+from os import makedirs
 from operator import itemgetter
 from pyteomics import achrom
 from statsmodels.stats.weightstats import DescrStatsW, ttest_ind
@@ -175,6 +176,7 @@ class DECA:
                     row['Start'] = int(row['Start'])
                     row['End'] = int(row['End'])
                     row['Protein'] = str(row['Protein'])
+                    row['State'] = str(row['State'])
                     if 'Fragment' in row.keys():
                         if row['Fragment'] != '':
                             self.recombined = True
@@ -186,7 +188,6 @@ class DECA:
                             up_count += 1
                     row['MaxUptake'] = int(up_count)
                     count = count + 1
-                    self.master_csv.append(row)
                     if 'Uptake_corr' in reader.fieldnames:
                         if 'CorrectionFactor' in reader.fieldnames:
                             row['PeptideCorrection'] = 1
@@ -195,9 +196,13 @@ class DECA:
                             if float(row['PeptideCorrection']) != 1:
                                 self.pep_corrected = True
                         else:
-                            row['ExposureCorrection'] = round(float(row['Uptake'])/float(row['Uptake_corr']),3)
+                            row['ExposureCorrection'] = round(float(row['Uptake']) / float(row['Uptake_corr']), 3)
                         exp_factors_set.add((row['Exposure'], row['ExposureCorrection']))
-                    self.rettimes.append((row['Sequence'],row['RT']))
+                    if row['Uptake'] != 'NaN':
+                        self.master_csv.append(row)
+                        self.rettimes.append((row['Sequence'],row['RT']))
+                    else:
+                        continue
             if 'Uptake_corr' in list(self.master_csv[0].keys()):
                 self.corrected = 'Yes'
                 if any(item != 1 for item in [i[1] for i in exp_factors_set]):
@@ -211,7 +216,7 @@ class DECA:
             self.seq_to_rt = achrom.get_RCs([str(i[0]) for i in rettimes2], [float(i[1]) for i in rettimes2],rcond=None)
             print('Finished Reading')
 
-        if ftype == 'Cluster':
+        elif ftype == 'Cluster':
             exp_factors_set = set()
             self.pep_corrected = False
             row_count = sum(1 for row in open(infile))
@@ -1709,6 +1714,29 @@ class DECA:
                                      key=itemgetter('Start')),
                               key=itemgetter('Protein')):
                 writer.writerow(row)
+
+    def exportPlotData(self, export_name):
+        if self.corrected == 'Yes':
+            fieldnames = ['Protein', 'Start', 'End', 'PepID', 'size', 'Sequence', 'Modification', 'Fragment', 'MaxUptake',
+                          'MHP', 'State', 'Exposure', 'Center', 'Center SD', 'Uptake', 'Uptake SD', 'RT', 'RT SD',
+                          'Uptake_corr', 'Uptake_SD_corr', 'Percent_Uptake_corr', 'ExposureCorrection', 'PeptideCorrection']
+        else:
+            fieldnames = ['Protein', 'Start', 'End', 'PepID', 'size', 'Sequence', 'Modification', 'Fragment', 'MaxUptake',
+                          'MHP', 'State', 'Exposure', 'Center', 'Center SD', 'Uptake', 'Uptake SD', 'RT', 'RT SD']
+        filename = split(export_name)[1].replace('_Corrected','').replace('.csv','')
+        makedirs(join(split(export_name)[0], "Peptides"),exist_ok=True)
+        for id in list(self.peplist.keys()):
+            csvname = join(split(export_name)[0],"Peptides",filename+"_"+self.peplist[id]['Protein']+"_"+str(self.peplist[id]['Start'])+"-"+str(self.peplist[id]['End'])+".csv")
+            with open(csvname, 'w') as name:
+                writer = csv.DictWriter(name, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                for row in sorted(sorted(sorted(sorted(sorted([i for i in self.master_csv if i['PepID']==id],
+                                                              key=itemgetter('Exposure')),
+                                                       key=itemgetter('State')),
+                                                key=itemgetter('End')),
+                                         key=itemgetter('Start')),
+                                  key=itemgetter('Protein')):
+                    writer.writerow(row)
 
     # Generate and Save PML script
     def exportPymol(self, corrected, state1, state2, protein, exposure, pyprot, pychain, type, color, range, export_name):
