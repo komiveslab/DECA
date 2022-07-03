@@ -1748,15 +1748,17 @@ class DECA:
             sdval = "Uptake SD"
         if type in ['Uptake','SD','Fractional Uptake','Fractional SD']:
             if exposure == 'Ave':
-                exposures = self.data_nest[protein][state1].keys()
+                exposures = list(self.data_nest[protein][state1].keys())
+                if 0 in exposures: exposures.remove(0)
                 self.assignData(protein, state1, min(exposures))
             else:
                 exposure = float(exposure)
                 self.assignData(protein, state1, exposure)
-        elif type in ['Fractional Uptake','Fractional Uptake Diff']:
+        elif type in ['Uptake Diff','Fractional Uptake Diff']:
             if exposure == 'Ave':
                 exposures = list(
                     set(self.data_nest[protein][state1].keys()) & set(self.data_nest[protein][state2].keys()))
+                if 0 in exposures: exposures.remove(0)
                 self.assignData(protein, state1, min(exposures), state2)
             else:
                 exposure = float(exposure)
@@ -1934,7 +1936,7 @@ class DECA:
                                             n["Start"] == i['pepmin'] and n['End'] == i['pepmax']][0]
                                 pep2 = [n[upval] for n in self.data_nest[protein][state2][e] if
                                             n["Start"] == i['pepmin'] and n['End'] == i['pepmax']][0]
-                                maxuptake = [n['MaxUptake'] for n in self.data_nest[protein][state1][exposure] if
+                                maxuptake = [n['MaxUptake'] for n in self.data_nest[protein][state1][e] if
                                                  n["Start"] == i['pepmin'] and n['End'] == i['pepmax']][0]
                                 b.append((float(pep1) - float(pep2))/ float(maxuptake))
                             b = mean(b)

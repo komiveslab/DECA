@@ -82,6 +82,7 @@ class Files():
         menubar.add_cascade(label="Window", menu=self.window_menu)
         self.help_menu = Tk.Menu(menubar)
         menubar.add_cascade(label="Help", menu=self.help_menu)
+        self.menubar = menubar
 
 class Help():
     def __init__(self):
@@ -748,15 +749,24 @@ class Plot():
             popupMenu.add_cascade(label="State Settings", menu=statMenu)
             self.popupMenu = popupMenu
             if platform == 'darwin':
-                frame.bind("<Button-2>", lambda event: popupMenu.post(event.x_root, event.y_root))
+                frame.bind("<Button-2>", lambda event: self.on_event1(event))
+                frame.bind("<Button-3>", lambda event: self.on_event2(event))
             else:
-                frame.bind("<Button-3>", lambda event: popupMenu.post(event.x_root, event.y_root))
+                frame.bind("<Button-3>", lambda event: self.on_event2(event))
             self.statMenu = statMenu
+            self.popupMenu = popupMenu
             self.main=main
 
+        def on_event1(self,event):
+            self.popupMenu.post(event.x_root, event.y_root)
+            print('Right Click! Button 2')
+
+        def on_event2(self, event):
+            self.popupMenu.post(event.x_root, event.y_root)
+            print('Right Click! Button 3')
         def update(self,k,v):
             print(str(k)+' '+str(v))
-            if k == 'colors' or k== 'markers':
+            if k == 'colors' or k== 'markers' or k == 'linestyles':
                 self.main.settings[k][v[0]] = v[1]
             else:
                 self.main.settings[k] = v
@@ -1058,11 +1068,25 @@ class Map():
         xlim_entry = Tk.Entry(frame1)
         xlim_entry.grid(row=11,column=1)
 
-        cov_button = ttk.Button(frame2,text='''Coverage Map''')
+        xs_label = Tk.Label(frame1, text='''N-term Gap:''')
+        xs_label.grid(row=12, column=0)
+
+        xs_button = ttk.Checkbutton(frame1)
+        xs_button.grid(row=12, column=1)
+
+        cov_button = ttk.Button(frame2,text='''Show Coverage Map''')
         cov_button.pack(side=Tk.LEFT)
 
-        heat_button = ttk.Button(frame2,text='''Heat Map''')
+        heat_button = ttk.Button(frame2,text='''Show Heat Map''')
         heat_button.pack(side=Tk.LEFT)
+
+        frame3 = Tk.Frame(top)
+        frame3.pack(side=Tk.TOP)
+        cov_save = ttk.Button(frame3,text='''Save Coverage Map''')
+        cov_save.pack(side=Tk.LEFT)
+
+        heat_save = ttk.Button(frame3,text='''Save Heat Map''')
+        heat_save.pack(side=Tk.LEFT)
 
         style.map('TCombobox', fieldbackground=[('readonly', 'white')])
         style.map('TCombobox', foreground=[('readonly', 'black')])
@@ -1088,6 +1112,9 @@ class Map():
         self.reverse_button = reverse_button
         self.min_range = min_range
         self.max_range = max_range
+        self.cov_save = cov_save
+        self.heat_save = heat_save
+        self.xs_button = xs_button
 
 class Butterfly():
     def __init__(self, main):

@@ -171,6 +171,8 @@ class Main():
         self.view.data_menu.add_command(label="Butterfly Plot", command=lambda: self.open_window('Butterfly'))
         self.view.data_menu.add_command(label="PyMOL Script", command=lambda: self.open_window('PML'))
         self.view.data_menu.add_command(label='Export CSV', command=lambda: self.save_data())
+        self.view.data_menu.add_command(label='Export Plot', command=lambda: self.plot.save())
+        self.view.data_menu.entryconfig('Export Plot', state='disabled')
 
         self.view.analyze_menu.add_command(label="Retention Time", command=lambda: RT(self))
         self.view.analyze_menu.add_command(label="Spectrum", command=lambda: self.open_window('Spectrum'))
@@ -211,9 +213,8 @@ class Main():
 
     # Prompts a file to open, imports file into DECA class, updates progess bar
     def open_file(self,item=None):
+        print('Opening File')
         self.increment = 0
-
-        print('OpenFileTriggered')
         if item == None:
             csv_file = FileDialog.askopenfilename(title="Choose CSV or DNX file",
                                                   filetypes=[('csv files', '*.csv'),('dnx files', '*.DnX'), ('all files', '*.*')], )
@@ -236,61 +237,63 @@ class Main():
                         csv_file_name = csv_file_name + '(%s)' % n
                         n = n + 1
                     self.popup('Error!', 'Name renamed to:'+str(csv_file_name))
-                self.view.pb.frame.pack(side=Tk.TOP)
-                def thread_queue():
-                    try:
-                        d = DECA(csv_file,que=que)
-                    except:
-                        print('Exception')
-                        self.view.file_list.bind('<ButtonRelease-1>', self.select_item)
-                        self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event))
-                        return
-                    self.state_obj[csv_file_name] = d
-                    if self.state_obj[csv_file_name].recombined:
-                        recombined = 'Yes'
-                    else:
-                        recombined = 'No'
-                    id = self.view.file_list.insert('', 'end', text=csv_file_name, values=(
-                        csv_file_name, str(', '.join(self.state_obj[csv_file_name].proteins)),
-                        str(', '.join(self.state_obj[csv_file_name].states)),
-                        str(', '.join([str(i) for i in self.state_obj[csv_file_name].exposures])),
-                        self.state_obj[csv_file_name].corrected, recombined))
-                    self.corrected = self.state_obj[csv_file_name].corrected
-                    self.view.file_list.selection_set(id)
-                    self.view.file_list.focus(id)
-                    self.select_item()
-                    self.file_list.append(csv_file)
+                # self.view.pb.frame.pack(side=Tk.TOP)
+                # def thread_queue():
+                try:
+                    d = DECA(csv_file,que=que)
+                except:
+                    print('Exception')
                     self.view.file_list.bind('<ButtonRelease-1>', self.select_item)
                     self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event))
+                    return
+                self.state_obj[csv_file_name] = d
+                if self.state_obj[csv_file_name].recombined:
+                    recombined = 'Yes'
+                else:
+                    recombined = 'No'
+                id = self.view.file_list.insert('', 'end', text=csv_file_name, values=(
+                    csv_file_name, str(', '.join(self.state_obj[csv_file_name].proteins)),
+                    str(', '.join(self.state_obj[csv_file_name].states)),
+                    str(', '.join([str(i) for i in self.state_obj[csv_file_name].exposures])),
+                    self.state_obj[csv_file_name].corrected, recombined))
+                self.corrected = self.state_obj[csv_file_name].corrected
+                self.view.file_list.selection_set(id)
+                self.view.file_list.focus(id)
+                self.select_item()
+                self.file_list.append(csv_file)
+                self.view.file_list.bind('<ButtonRelease-1>', self.select_item)
+                self.view.file_list.dnd_bind('<<Drop>>', lambda event: self.open_file(event))
+                #
+                # def check_finished():
+                #     while True:
+                #         try:
+                #             x = self.view.pb.que.get_nowait()
+                #         except queue.Empty:
+                #             if secondary_thread.is_alive():
+                #                 self.root.after(50,check_finished)
+                #                 break
+                #             else:
+                #                 self.view.pb.progbar.stop()
+                #                 self.view.pb.frame.pack_forget()
+                #                 print('Secondary Thread Dead')
+                #                 break
+                #         else:  # continue from the try suite
+                #             if x == -1:
+                #                 self.view.pb.progbar.stop()
+                #                 self.view.pb.frame.pack_forget()
+                #                 print('Secondary Thread Finished')
+                #                 break
+                #             else:
+                #                 self.view.pb.dvar.set(x)
+                #
+                # secondary_thread = threading.Thread(target=thread_queue)
+                # secondary_thread.start()
+                #
+                # # check the Queue in 50ms
+                # self.root.after(50,check_finished)
 
-                def check_finished():
-                    while True:
-                        try:
-                            x = self.view.pb.que.get_nowait()
-                        except queue.Empty:
-                            if secondary_thread.is_alive():
-                                self.root.after(50,check_finished)
-                                break
-                            else:
-                                self.view.pb.progbar.stop()
-                                self.view.pb.frame.pack_forget()
-                                print('Secondary Thread Dead')
-                                break
-                        else:  # continue from the try suite
-                            if x == -1:
-                                self.view.pb.progbar.stop()
-                                self.view.pb.frame.pack_forget()
-                                print('Secondary Thread Finished')
-                                break
-                            else:
-                                self.view.pb.dvar.set(x)
-
-                secondary_thread = threading.Thread(target=thread_queue)
-                secondary_thread.start()
-
-                # check the Queue in 50ms
-                self.root.after(50,check_finished)
-            else: return
+            else:
+                return
         else:
             self.popup("Open File Error", "No Item Chosen")
 
@@ -307,6 +310,7 @@ class Main():
 
     # Updates data list and plots upon the selection of an item in the file list
     def select_item(self, *args):
+        print('Item Selected')
         if ('Data' not in self.widgets):
             print('Creating DataCtrl')
             self.data = Data(self)
@@ -551,6 +555,7 @@ class Data():
         print('Inserting Data')
         self.xref = {}
         for protein in obj.proteins:
+            print('Protein')
             protein_tvid = self.view.tv.insert('', 'end', text=protein, open=False)
             all_peptides = [i for i in obj.master_csv if i['Protein'] == protein]
             pepids = [i[0] for i in
@@ -562,6 +567,7 @@ class Data():
                           key=itemgetter(1))]
 
             for pepid in pepids:
+                print(pepid)
                 all_states = [i for i in all_peptides if i['PepID'] == pepid]
                 states = set([i['State'] for i in all_states])
                 start = int(all_states[0]['Start'])
@@ -1639,6 +1645,7 @@ class Plot():
         self.view = View.Plot(main)  # Initialize Plot GUI
         main.widget_dict['Plot'] = self.view.top
         main.widgets.append('Plot')
+        self.main.view.data_menu.entryconfig('Export Plot', state='normal')
         self.main.view.window_menu.add_command(label='Plot', command=lambda: self.main.focus(self.view.top))
 
         self.title_val = Tk.IntVar()
@@ -1652,20 +1659,26 @@ class Plot():
         self.ann_val.set(1)
         self.leg_val.set(1)
         self.position = 0
+        self.linestyles = ['solid','dotted','dashed','dashdot']
         self.markers = {'circle':'o','triangle':'^','square':'s','plus':'p','star':'*','diamond':'D','x':'X'}
         self.state_markers = {}
+        self.state_linestyles = {}
         self.listbox_dict = {}
-        self.view.top.protocol("WM_DELETE_WINDOW", lambda: self.main.on_closing(self.view.top, 'Plot'))
+        self.last_states = 0
+        self.view.top.protocol("WM_DELETE_WINDOW", lambda: self.on_close())
         self.default_options = {'font':'Arial', 'ls':'5', 'ms':'10', 'as':'3', 'ar':1,
                                 'leg': 1, 'ann': 1, 'title': 1, 'xaxis': 1, 'yaxis': 1,
                                 'title_size': 40, 'xaxis_size': 32, 'yaxis_size': 32, 'ann_size': 28, 'leg_size': 16,
                                 'xaxis_labels': 'Fitted', 'yaxis_labels': '',
                                 'xaxis_title':'Time (min)','yaxis_title':'Deuterium Uptake (Da)',
-                                'colors': {}, 'markers': {}, 'fit':'lin', 'yaxis_units':'Da'}
+                                'colors': {}, 'markers': {}, 'linestyles':{}, 'fit':'lin', 'yaxis_units':'Da'}
         self.settings = copy(self.default_options)
         self.xref = {}
         self.initialize_axis()
 
+    def on_close(self):
+        self.main.on_closing(self.view.top, 'Plot')
+        self.main.view.data_menu.entryconfig('Export Plot', state='disabled')
     # Draws Axis
     def initialize_axis(self):
         self.view.cm = self.view.context_menu(self.view.figcan.get_tk_widget(), self)
@@ -1882,7 +1895,6 @@ class Plot():
         rcParams['ps.fonttype'] = 42
         colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
         color_cycle = cycle(colors)
-        line_cycle = cycle(['-'])
         # Prep Data
         default_pep = pep[state_args['State0']][0]
         pep_mass = default_pep['MHP']
@@ -1900,10 +1912,15 @@ class Plot():
         if self.settings['markers'] != '':
             for item in self.settings["markers"].keys():
                 self.state_markers[item] = str(self.settings["markers"][item])
+        if self.settings['linestyles'] != '':
+            for item in self.settings["linestyles"].keys():
+                self.state_linestyles[item] = str(self.settings["linestyles"][item])
         fontsetting = matplotlib.font_manager.FontProperties(family=self.settings['font'],
                                                              weight='normal',
                                                              style='normal', size=self.settings['leg_size'])
         names = {}
+        self.view.cm.statMenu.delete(0,self.last_states)
+        self.last_states = len(state_args.values())
         for state in sorted(state_args.values()):
             menu = Tk.Menu(self.view.cm.statMenu, tearoff=0)
             self.view.cm.statMenu.add_cascade(label=state, menu=menu)
@@ -1915,6 +1932,12 @@ class Plot():
             menu.add_cascade(label='markers', menu=mmenu)
             for marker in ['circle', 'triangle', 'square', 'plus', 'star', 'diamond', 'x']:
                 mmenu.add_command(label=marker, command=lambda state=state, marker=marker: self.view.cm.update('markers', (state,marker)))
+            lmenu= Tk.Menu(menu, tearoff=0)
+            menu.add_cascade(label='linestyles', menu=lmenu)
+            for linestyle in ['solid', 'dashed', 'dotted', 'dashdot']:
+                lmenu.add_command(label=linestyle,
+                                  command=lambda state=state, linestyle=linestyle: self.view.cm.update('linestyles',
+                                                                                                 (state, linestyle)))
             if state in self.main.set_colors.keys():
                 state_color = self.main.set_colors[state]
             else:
@@ -1927,7 +1950,13 @@ class Plot():
                     state_marker = 'o'
             else:
                 state_marker = 'o'
-            state_line = next(line_cycle)
+            if self.settings["linestyles"] != {}:
+                if state in self.settings["linestyles"].keys():
+                    state_linestyle = str(self.settings["linestyles"][state])
+                else:
+                    state_linestyle = 'solid'
+            else:
+                state_linestyle = 'solid'
             pep_exposures = list(set([round(float(i['Exposure']),2) for i in pep[state]]))
             if len(pep_exposures) >= 3:
                 x_values = []
@@ -2008,7 +2037,7 @@ class Plot():
                 for i in zip(x_np,y_np):
                     names[i] = state
                 errs.append(err)
-                line, = axis.plot(t_space, y_lsq, label = state, linestyle=state_line, color=state_color,
+                line, = axis.plot(t_space, y_lsq, label = state, linestyle=state_linestyle, color=state_color,
                                   linewidth=self.settings['ls'], marker=state_marker, markevery=[0])
                 lines.append(line)
                 print("State=" + state + " y=" + str(round(float(res_lsq[0][0]),2)) + "*(1-e^(-" + str(round(float(res_lsq[0][1]),2)) + "*t))+" + str(
@@ -2318,6 +2347,11 @@ class Plot():
                 pov.tree_markers.insert('', 'end', values=(str(i), self.state_markers[i]))
             else:
                 pov.tree_markers.insert('', 'end', values=(str(i), 'circle'))
+        for i in self.states:
+            if i in self.state_linestyles.keys():
+                pov.tree_linestyles.insert('', 'end', values=(str(i), self.state_linestyles[i]))
+            else:
+                pov.tree_linestyles.insert('', 'end', values=(str(i), 'solid'))
         pov.button_save.configure(command=lambda: savedefaults({'leg': pov.var_check_legend.get(),
                                                             'ann': pov.var_check_info.get(),
                                                             'font': str(pov.var_combobox_font.get()),
@@ -2326,6 +2360,7 @@ class Plot():
                                                             'yaxis': pov.entry_yaxis.get(),
                                                             'colors': pov.tree_colors.treeview_dict(),
                                                             'markers': pov.tree_markers.treeview_dict(),
+                                                            'linestyles': pov.tree_linestyles.treeview_dict(),
                                                             'xaxis_labels': pov.entry_xlabels.get()}))
         pov.button_cancel.configure(command=lambda: pov.top.destroy())
 
@@ -2400,6 +2435,9 @@ class Map():
         self.reverse = Tk.IntVar()
         self.view.reverse_button.configure(variable=self.reverse)
         self.reverse.set(0)
+        self.xs = Tk.IntVar()
+        self.view.xs_button.configure(variable=self.xs)
+        self.xs.set(0)
         self.view.range_combobox.bind("<<ComboboxSelected>>", lambda e: self.range_selected())
         self.view.range_combobox.configure(values=['Fit to Data', 'Full Range', 'Half Range', 'Custom'])
         self.view.range_combobox.configure(textvariable=self.range)
@@ -2409,6 +2447,8 @@ class Map():
         self.xlim.set('50')
         self.view.cov_button.configure(command=lambda: self.map('Coverage', self))
         self.view.heat_button.configure(command=lambda: self.map('Heat', self))
+        self.view.cov_save.configure(command=lambda: self.map_save('Coverage', self))
+        self.view.heat_save.configure(command=lambda: self.map_save('Heat', self))
         self.view.top.protocol("WM_DELETE_WINDOW", lambda: main.on_closing(self.view.top, 'Map'))
         print('finished initiating map')
 
@@ -2451,6 +2491,7 @@ class Map():
             self.exposure = str(parent.exposure.get())
             self.color = str(parent.color.get())
             self.reverse = int(parent.reverse.get())
+            self.xs = int(parent.xs.get())
             self.cmaps = parent.cmaps
             self.data_range = str(parent.range.get())
             self.line_length = int(parent.xlim.get())
@@ -2517,16 +2558,16 @@ class Map():
                     title="Choose save location",
                     initialfile=self.protein + "_" + str(self.state) + "-" + str(self.state2) + "_" + str(self.exposure)+"_Map.png",
                     initialdir=self.parent.main.dir,
-                    filetypes=(("PNG", '*.png'), ("all files", "*.*")))
+                    filetypes=(("PNG", '*.png'),("JPG",'*.jpg'),("TIF", '*.tif'), ("all files", "*.*")))
             else:
                 savefile = FileDialog.asksaveasfilename(
                     title="Choose save location",
                     initialfile=self.protein + "_" + str(self.state) + "_" + str(self.exposure) + "_Map.png",
                     initialdir=self.parent.main.dir,
-                    filetypes=(("PNG", '*.png'), ("all files", "*.*")))
+                    filetypes=(("PNG", '*.png'),("JPG",'*.jpg'),("TIF", '*.tif'), ("all files", "*.*")))
             if split(savefile)[0] != "":
                 self.parent.main.dir = split(savefile)[0]
-            if str(splitext(split(savefile)[1])[1]).lower() != '.png':
+            if str(splitext(split(savefile)[1])[1]).lower() not in ['.png','.jpg','.tif']:
                 savefile = savefile + '.png'
             fig.savefig(savefile, dpi=300, transparent=True)
             plt.close()
@@ -2687,11 +2728,11 @@ class Map():
                             fracuptakediff = np.mean([float(j[self.uptakekey])/float(j['MaxUptake']) -
                                                               float(i[self.uptakekey])/float(i['MaxUptake'])
                                                               for j in e2list for i in elist])
-                        self.pepdict.append({'Start':elist[0]['Start'],'End':elist[0]['End'], 'Fragment':elist[0]['Fragment'],  'MaxUptake':elist[0]['MaxUptake'],
+                        self.pepdict.append({'Start':elist[0]['Start'],'End':elist[0]['End'], 'Fragment':elist[0]['Fragment'],  'Modification':elist[0]['Modification'], 'MaxUptake':elist[0]['MaxUptake'],
                                             'reluptake':reluptake, 'uptakediff':uptakediff, 'fracuptake':fracuptake,
                                             'fracuptakediff':fracuptakediff, 'relsd':relsd, 'fracsd':fracsd})
                     else:
-                        self.pepdict.append({'Start':elist[0]['Start'],'End':elist[0]['End'], 'Fragment':elist[0]['Fragment'], 'MaxUptake':elist[0]['MaxUptake'],
+                        self.pepdict.append({'Start':elist[0]['Start'],'End':elist[0]['End'], 'Fragment':elist[0]['Fragment'], 'Modification':elist[0]['Modification'], 'MaxUptake':elist[0]['MaxUptake'],
                                             'reluptake':reluptake, 'fracuptake':fracuptake, 'relsd':relsd, 'fracsd':fracsd})
             else:
                 for pepid in id_list:
@@ -2713,11 +2754,11 @@ class Map():
                             fracuptakediff = 0
                         else:
                             fracuptakediff = (float(pep2[self.uptakekey]) - float(pep[self.uptakekey])) / float(pep['MaxUptake'])
-                        self.pepdict.append({'Start':pep['Start'],'End':pep['End'], 'Fragment':pep['Fragment'], 'MaxUptake':pep['MaxUptake'],
+                        self.pepdict.append({'Start':pep['Start'],'End':pep['End'], 'Fragment':pep['Fragment'], 'Modification':pep['Modification'],'MaxUptake':pep['MaxUptake'],
                                             'reluptake':reluptake, 'uptakediff':uptakediff, 'fracuptake':fracuptake,
                                             'fracuptakediff':fracuptakediff, 'relsd':relsd, 'fracsd':fracsd})
                     else:
-                        self.pepdict.append({'Start':pep['Start'],'End':pep['End'], 'Fragment':pep['Fragment'], 'MaxUptake':pep['MaxUptake'],
+                        self.pepdict.append({'Start':pep['Start'],'End':pep['End'], 'Fragment':pep['Fragment'], 'Modification':pep['Modification'], 'MaxUptake':pep['MaxUptake'],
                                             'reluptake':reluptake, 'fracuptake':fracuptake, 'relsd':relsd, 'fracsd':fracsd})
             if self.map_type == 'Heat':
                 if self.data_type in ['Fractional Uptake Diff', 'Uptake Diff']:
@@ -2749,13 +2790,18 @@ class Map():
                             self.seq_nest2[(item['pepmin'], item['pepmax'])] = [item['pos']]
 
             self.sequence = self.obj.sequences[self.protein]
-            self.firstpos = min([i for i,j in enumerate(self.sequence) if j != "X"])
+            if not self.xs:
+                self.firstpos = min([i for i,j in enumerate(self.sequence) if j != "X"])
+                self.startspace = 0
+            else:
+                self.firstpos = min([i for i,j in enumerate(self.sequence) if j != "X"])
+                self.startspace = (self.firstpos)%self.line_length
             self.sequence = self.sequence[self.firstpos:]
 
         # Determines the height of the map depending on the line width, sequence length, and peptide coverage
         def determine_levels(self):
             self.seqlist = list(self.sequence)
-            self.seqlength = len(self.seqlist)
+            self.seqlength = len(self.seqlist)+self.startspace
             self.levels = int(self.seqlength / self.line_length) + 1
             self.level_dict = {}
             for pep in sorted(self.pepdict, key=itemgetter('Start')):
@@ -2765,7 +2811,8 @@ class Map():
                     if n not in self.peplist.keys():
                         self.peplist[n] = []
                 self.peplist[n] += range(pep['Start'], pep['End'] + 1)
-                self.level_dict[(pep['Start'], pep['End'], pep['Fragment'])] = n
+                # Added modification to peptide descriptor
+                self.level_dict[(pep['Start'], pep['End'], pep['Fragment'],pep['Modification'])] = n
 
             if self.map_type == 'Coverage':
                 self.redun_dict = {}
@@ -2777,7 +2824,7 @@ class Map():
                     range_max = (level + 1) * self.line_length
                     range_list = list(range(range_min, range_max + 1))
                     for n in self.peplist.keys():
-                        if set([resn for resn in self.peplist[n] if range_min<=resn<=range_max]).intersection(range_list) != set([]):
+                        if set([resn-self.firstpos+self.startspace for resn in self.peplist[n] if range_min<=(resn-self.firstpos+self.startspace)<=range_max]).intersection(range_list) != set([]):
                             self.redun_dict[level+1] = n+1
                     self.ymax += (self.redun_dict[level+1] + self.spacing)
             elif self.map_type == 'Heat':
@@ -2795,9 +2842,37 @@ class Map():
             for n in range(0, self.levels):
                 level = n + 1
                 redundancy = self.redun_dict[level]
-                # If sequence is longer than the current level:
                 self.ycurlevel = self.ycurlevel - (redundancy + self.spacing)
-                if (self.seqlength - self.line_length * n) > self.line_length:
+                # If first line
+                if level == 1:
+                    # Create a line from xpad to linelength+xpad
+                    self.vertices += [(2 * (self.startspace+self.xpad), 2 * self.ycurlevel),
+                                      (2 * (self.line_length + self.xpad), 2 * self.ycurlevel)]
+                    self.codes += [Path.MOVETO, Path.LINETO]
+                    # Create Hash marks and text
+                    for m in range(self.startspace, (n + 1) * self.line_length):
+                        x = m % self.line_length
+                        self.vertices += [(2 * (x + self.xpad), 2 * (self.ycurlevel + 0.1)),
+                                          (2 * (x + self.xpad), 2 * (self.ycurlevel - 0.1))]
+                        self.codes += [Path.MOVETO, Path.LINETO]
+                        if (m + 1 + self.firstpos - self.startspace) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m - self.startspace + self.firstpos + 1),
+                                          (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                                          color='black', fontsize=self.textsize, horizontalalignment='center',
+                                          verticalalignment='bottom', family='monospace')
+
+                    for m in range(self.startspace, (n + 1) * self.line_length):
+                        x = m % self.line_length
+                        axis.annotate(self.seqlist[m - self.startspace], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                                      color='black', fontsize=self.textsize, horizontalalignment='center',
+                                      verticalalignment='top',
+                                      family='monospace')
+                    self.vertices += [(2 * (self.line_length + self.xpad), 2 * (self.ycurlevel + 0.1)),
+                                      (2 * (self.line_length + self.xpad), 2 * (self.ycurlevel - 0.1))]
+                    self.codes += [Path.MOVETO, Path.LINETO]
+                # If sequence is longer than the current level:
+                elif (self.seqlength - self.line_length * n) > self.line_length:
                     # Create a line from xpad to linelength+xpad
                     self.vertices += [(2 * self.xpad, 2 * self.ycurlevel),
                                       (2 * (self.line_length + self.xpad), 2 * self.ycurlevel)]
@@ -2808,15 +2883,15 @@ class Map():
                         self.vertices += [(2 * (x + self.xpad), 2 * (self.ycurlevel + 0.1)),
                                           (2 * (x + self.xpad), 2 * (self.ycurlevel - 0.1))]
                         self.codes += [Path.MOVETO, Path.LINETO]
-                        if (m + 1 + self.firstpos) % 10 == 0:
+                        if (m + 1 + self.firstpos-self.startspace) % 10 == 0:
                             # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
-                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                            axis.annotate(str(m + self.firstpos-self.startspace + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
                                           color='black', fontsize=self.textsize, horizontalalignment='center',
                                           verticalalignment='bottom', family='monospace')
 
                     for m in range(n * self.line_length, (n + 1) * self.line_length):
                         x = m % self.line_length
-                        axis.annotate(self.seqlist[m], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                        axis.annotate(self.seqlist[m-self.startspace], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
                                       color='black', fontsize=self.textsize, horizontalalignment='center',
                                       verticalalignment='top',
                                       family='monospace')
@@ -2833,14 +2908,14 @@ class Map():
                         self.vertices += [(2 * (x + self.xpad), 2 * (self.ycurlevel + 0.1)),
                                           (2 * (x + self.xpad), 2 * (self.ycurlevel - 0.1))]
                         self.codes += [Path.MOVETO, Path.LINETO]
-                        if (m + 1 + self.firstpos) % 10 == 0:
+                        if (m + 1 + self.firstpos-self.startspace) % 10 == 0:
                             # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
-                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                            axis.annotate(str(m + self.firstpos-self.startspace + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
                                           color='black', fontsize=self.textsize, horizontalalignment='center',
                                           verticalalignment='bottom', family='monospace')
                     for m in range(n * self.line_length, self.seqlength):
                         x = m % self.line_length
-                        axis.annotate(self.seqlist[m], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                        axis.annotate(self.seqlist[m-self.startspace], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
                                       color='black', fontsize=self.textsize, horizontalalignment='center',
                                       verticalalignment='top',
                                       family='monospace')
@@ -2858,29 +2933,41 @@ class Map():
                 level = n + 1
                 redundancy = self.redun_dict[level]
                 # If sequence is longer than the current level:
-                if (self.seqlength - self.line_length * n) > self.line_length:
-                    for m in range(n * self.line_length, (n + 1) * self.line_length):
+                if level ==1:
+                    for m in range(self.startspace, (n + 1) * self.line_length):
                         x = m % self.line_length
-                        axis.annotate(self.seqlist[m], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                        axis.annotate(self.seqlist[m-self.startspace], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
                                       color='black', fontsize=self.textsize, horizontalalignment='center',
                                       verticalalignment='center',
                                       family='monospace')
-                        if (m + 1 + self.firstpos) % 10 == 0:
+                        if (m + 1 + self.firstpos-self.startspace) % 10 == 0:
                             # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
-                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                            axis.annotate(str(m + self.firstpos - self.startspace + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                                          color='black', fontsize=self.textsize*0.75, horizontalalignment='center',
+                                          verticalalignment='center', family='monospace')
+                elif (self.seqlength - self.line_length * n) > self.line_length:
+                    for m in range(n * self.line_length, (n + 1) * self.line_length):
+                        x = m % self.line_length
+                        axis.annotate(self.seqlist[m-self.startspace], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                                      color='black', fontsize=self.textsize, horizontalalignment='center',
+                                      verticalalignment='center',
+                                      family='monospace')
+                        if (m + 1 + self.firstpos-self.startspace) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos - self.startspace + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
                                           color='black', fontsize=self.textsize*0.75, horizontalalignment='center',
                                           verticalalignment='center', family='monospace')
                 # Conditions for final line
                 else:
                     for m in range(n * self.line_length, self.seqlength):
                         x = m % self.line_length
-                        axis.annotate(self.seqlist[m], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                        axis.annotate(self.seqlist[m-self.startspace], (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
                                       color='black', fontsize=self.textsize, horizontalalignment='center',
                                       verticalalignment='center',
                                       family='monospace')
                         if (m + 1 + self.firstpos) % 10 == 0:
                             # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
-                            axis.annotate(str(m + self.firstpos + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                            axis.annotate(str(m + self.firstpos - self.startspace + 1), (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
                                           color='black', fontsize=self.textsize*0.75, horizontalalignment='center',
                                           verticalalignment='center', family='monospace')
                 self.ycurlevel = self.ycurlevel - (redundancy + self.spacing)
@@ -2893,17 +2980,17 @@ class Map():
                     vertices = []
                     codes = []
                     n = 0
-                    peplevel = self.level_dict[(pep['Start'], pep['End'], pep['Fragment'])]
+                    peplevel = self.level_dict[(pep['Start'], pep['End'], pep['Fragment'],pep['Modification'])]
                     # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
                     # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
-                    if int((pep['Start']-self.firstpos-1) / self.line_length) != int((pep['End']-self.firstpos-1) / self.line_length):
-                        level = int((pep['Start']-self.firstpos-1) / self.line_length) + 1
+                    if int((pep['Start']-self.firstpos+self.startspace-1) / self.line_length) != int((pep['End']-self.firstpos+self.startspace-1) / self.line_length):
+                        level = int((pep['Start']-self.firstpos+self.startspace-1) / self.line_length) + 1
                         yheight1 = peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level + 1)]) + level * self.spacing) + 2
                         yheight2 = peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level + 2)]) + (level + 1) * self.spacing) + 2
-                        start50 = (pep['Start']-self.firstpos-1) % self.line_length + self.xpad
-                        stop50 = (pep['End']-self.firstpos-1) % self.line_length + 1
+                        start50 = (pep['Start']-self.firstpos+self.startspace-1) % self.line_length + self.xpad
+                        stop50 = (pep['End']-self.firstpos+self.startspace-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2 * (self.line_length + self.xpad), 2 * yheight1), (2 * start50, 2 * yheight1),
                                      (2 * start50, 2 * (yheight1 + 0.75)),
@@ -2912,11 +2999,11 @@ class Map():
                                      (2 * stop50, 2 * (yheight2 + 0.75)),
                                      (2 * self.xpad, 2 * (yheight2 + 0.75))]
                     else:
-                        level = int((pep['Start'] - self.firstpos-1) / self.line_length) + 1
+                        level = int((pep['Start'] - self.firstpos+self.startspace-1) / self.line_length) + 1
                         yheight = peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level + 1)]) + level * self.spacing) + 2
-                        start50 = (pep['Start'] - self.firstpos-1) % self.line_length + self.xpad
-                        stop50 = (pep['End'] - self.firstpos-1) % self.line_length + 1
+                        start50 = (pep['Start'] - self.firstpos+self.startspace-1) % self.line_length + self.xpad
+                        stop50 = (pep['End'] - self.firstpos+self.startspace-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2 * start50, 2 * yheight), (2 * stop50, 2 * yheight),
                                      (2 * stop50, 2 * (yheight + 0.75)),
@@ -2957,21 +3044,21 @@ class Map():
                     self.redundancy=1
                     # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
                     # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
-                    if int((start - self.firstpos-1) / self.line_length) != int((end - self.firstpos-1) / self.line_length):  # If peptide starts and ends on different levels
-                        level = int((start - self.firstpos-1) / self.line_length) + 1  # Level is vertical position at various sequence fragments
+                    if int((start - self.firstpos+self.startspace-1) / self.line_length) != int((end - self.firstpos+self.startspace-1) / self.line_length):  # If peptide starts and ends on different levels
+                        level = int((start - self.firstpos+self.startspace-1) / self.line_length) + 1  # Level is vertical position at various sequence fragments
                         yheight1 = self.ymax - (level * (self.redundancy + self.spacing)) + 2  # Height results from level, redundancy(highest n value) and spacing
                         yheight2 = self.ymax - ((level + 1) * (self.redundancy + self.spacing)) + 2  # Height position at second level, hence, level+1
-                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad  # Residue 50 on a line of 1-50 should start at the end of the line, not the beginning of the next
-                        stop50 = (end - self.firstpos-1) % self.line_length + 1  # Stop includes stop residue, hence +1
+                        start50 = (start - self.firstpos+self.startspace-1) % self.line_length + self.xpad  # Residue 50 on a line of 1-50 should start at the end of the line, not the beginning of the next
+                        stop50 = (end - self.firstpos+self.startspace-1) % self.line_length + 1  # Stop includes stop residue, hence +1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2*(self.line_length + self.xpad), 2*yheight1), (2*start50, 2*yheight1), (2*start50, 2*(yheight1 + 2)),
                                      (2*(self.line_length + self.xpad), 2*(yheight1 + 2)),
                                      (2*self.xpad, 2*yheight2), (2*stop50, 2*yheight2), (2*stop50, 2*(yheight2 + 2)), (2*self.xpad, 2*(yheight2 + 2))]
                     else:
-                        level = int((start - self.firstpos-1) / self.line_length) + 1
+                        level = int((start - self.firstpos+self.startspace-1) / self.line_length) + 1
                         yheight = self.ymax - (level * (self.redundancy + self.spacing)) + 2
-                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad
-                        stop50 = (end - self.firstpos-1) % self.line_length + 1
+                        start50 = (start - self.firstpos+self.startspace-1) % self.line_length + self.xpad
+                        stop50 = (end - self.firstpos+self.startspace-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2*start50, 2*yheight), (2*stop50, 2*yheight), (2*stop50, 2*(yheight + 2)),
                                      (2*start50, 2*(yheight + 2)),
@@ -3010,13 +3097,13 @@ class Map():
                 for pep in self.pepdict:
                     vertices = []
                     codes = []
-                    stretch = int((pep['End'] - self.firstpos-1) / self.line_length) - int((pep['Start'] - self.firstpos-1) / self.line_length)
-                    peplevel = self.level_dict[(pep['Start'], pep['End'], pep['Fragment'])]
+                    stretch = int((pep['End'] - self.firstpos+self.startspace-1) / self.line_length) - int((pep['Start'] - self.firstpos+self.startspace-1) / self.line_length)
+                    peplevel = self.level_dict[(pep['Start'], pep['End'], pep['Fragment'], pep['Modification'])]
                     if stretch > 0:
-                        level = int((pep['Start'] - self.firstpos-1) / self.line_length) + 1
+                        level = int((pep['Start'] - self.firstpos+self.startspace-1) / self.line_length) + 1
                         yheight1 = -peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level)]) + (level) * self.spacing) + 0.5
-                        start50 = (pep['Start'] - self.firstpos-1) % self.line_length + self.xpad
+                        start50 = (pep['Start'] - self.firstpos+self.startspace-1) % self.line_length + self.xpad
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2 * (self.line_length + self.xpad), 2 * yheight1), (2 * start50, 2 * yheight1),
                                      (2 * start50, 2 * (yheight1 + 0.75)),
@@ -3032,17 +3119,17 @@ class Map():
                                          (2 * (self.line_length + self.xpad), 2 * (yheight + 0.75))]
                         yheight2 = -peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level+stretch)]) + (level + stretch) * self.spacing) + 0.5
-                        stop50 = (pep['End'] - self.firstpos-1) % self.line_length + 1
+                        stop50 = (pep['End'] - self.firstpos+self.startspace-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2 * self.xpad, 2 * yheight2), (2 * stop50, 2 * yheight2),
                                      (2 * stop50, 2 * (yheight2 + 0.75)),
                                      (2 * self.xpad, 2 * (yheight2 + 0.75))]
                     else:
-                        level = int((pep['Start'] - self.firstpos-1) / self.line_length) + 1
+                        level = int((pep['Start'] - self.firstpos+self.startspace-1) / self.line_length) + 1
                         yheight = -peplevel + self.ymax - (
                                 sum([self.redun_dict[j] for j in range(1, level)]) + level * self.spacing) + 0.5
-                        start50 = (pep['Start'] - self.firstpos-1) % self.line_length + self.xpad
-                        stop50 = (pep['End'] - self.firstpos-1) % self.line_length + 1
+                        start50 = (pep['Start'] - self.firstpos+self.startspace-1) % self.line_length + self.xpad
+                        stop50 = (pep['End'] - self.firstpos+self.startspace-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2 * start50, 2 * yheight), (2 * stop50, 2 * yheight),
                                      (2 * stop50, 2 * (yheight + 0.75)),
@@ -3084,11 +3171,11 @@ class Map():
                     codes = []
                     self.redundancy=1
 
-                    stretch = int((end - self.firstpos-1) / self.line_length) - int((start - self.firstpos-1) / self.line_length)
+                    stretch = int((end - self.firstpos+self.startspace-1) / self.line_length) - int((start - self.firstpos+self.startspace-1) / self.line_length)
                     if stretch > 0:
-                        level = int((start - self.firstpos-1) / self.line_length) + 1
+                        level = int((start - self.firstpos+self.startspace-1) / self.line_length) + 1
                         yheight1 = self.ymax - (level * (self.redundancy + self.spacing))+0.5
-                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad
+                        start50 = (start - self.firstpos+self.startspace-1) % self.line_length + self.xpad
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2*(self.line_length + self.xpad), 2*yheight1), (2*start50, 2*yheight1), (2*start50, 2*(yheight1 + 2)),
                                      (2*(self.line_length + self.xpad), 2*(yheight1 + 2))]
@@ -3100,14 +3187,14 @@ class Map():
                                          (2 * self.xpad, 2 * (yheight + 0.75)),
                                          (2 * (self.line_length + self.xpad), 2 * (yheight + 0.75))]
                         yheight2 = self.ymax - ((level + stretch) * (self.redundancy + self.spacing)) + 0.5
-                        stop50 = (end - self.firstpos-1) % self.line_length + 1
+                        stop50 = (end - self.firstpos+self.startspace-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3
                         vertices += [(2*self.xpad, 2*yheight2), (2*stop50, 2*yheight2), (2*stop50, 2*(yheight2 + 2)), (2*self.xpad, 2*(yheight2 + 2))]
                     else:
-                        level = int((start - self.firstpos-1) / self.line_length) + 1
+                        level = int((start - self.firstpos+self.startspace-1) / self.line_length) + 1
                         yheight = self.ymax - (level * (self.redundancy + self.spacing))+0.5
-                        start50 = (start - self.firstpos-1) % self.line_length + self.xpad
-                        stop50 = (end - self.firstpos-1) % self.line_length + 1
+                        start50 = (start - self.firstpos+self.startspace-1) % self.line_length + self.xpad
+                        stop50 = (end - self.firstpos+self.startspace-1) % self.line_length + 1
                         codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
                         vertices += [(2*start50, 2*yheight), (2*stop50, 2*yheight), (2*stop50, 2*(yheight + 2)),
                                      (2*start50, 2*(yheight + 2)),
@@ -3200,6 +3287,588 @@ class Map():
 
             self.scroll_y = scroll_y
             self.scroll_x = scroll_x
+    class map_save():
+        # Initializes plot and right click menu
+        def __init__(self, map_type, parent):
+            self.parent = parent
+            self.map_type = map_type
+            self.data_type = str(parent.representation.get())
+            self.protein = str(parent.protein.get())
+            self.state = str(parent.state1.get())
+            self.state2 = str(parent.state2.get())
+            self.exposure = str(parent.exposure.get())
+            self.color = str(parent.color.get())
+            self.reverse = int(parent.reverse.get())
+            self.xs = int(parent.xs.get())
+            self.cmaps = parent.cmaps
+            self.data_range = str(parent.range.get())
+            self.line_length = int(parent.xlim.get())
+            self.corrected = parent.main.corrected
+            self.obj = parent.main.state_obj[parent.main.csvfile]
+
+            self.settings = {'Font':'Arial',
+                             'Show Title':0,
+                             'Title Size':32}
+            self.peplist = {0: []}
+            self.pepdict = []
+            self.peptides = {}
+            self.peptides[0] = []
+            self.peptides[1] = []
+            self.vertices = []
+            self.codes = []
+            self.textsize = 16
+            self.xpad = 0
+
+            # Create Figure & Axis and apply plot properties
+            self.make_cmap()
+            self.get_peptide_data()
+            self.set_color_values()
+            self.determine_levels()
+
+            self.export()
+
+        # Customizes colormap
+        def make_cmap(self):
+            num_colors = 102
+            cm = plt.get_cmap(self.cmaps[self.color])
+            colorlist = [cm(1. * i / num_colors) for i in range(num_colors)]
+            if not self.reverse:
+                colorlist = list(colorlist)
+            else:
+                colorlist = list(reversed(colorlist))
+            self.rearranged_colors = colorlist[1:101]
+            self.newmap = matplotlib.colors.LinearSegmentedColormap.from_list("newmap", self.rearranged_colors)
+            self.color_values = ()
+            self.cval = 0
+            self.mval = 0
+
+        # Sets the color range based on specified settings and the data range
+        def set_color_values(self):
+            if self.data_type == 'Uptake':
+                values = [i['reluptake'] for i in self.pepdict]
+                if self.data_range in ['Fit to Data', 'Full Range', 'Half Range']:
+                    color_values = (min(values), max(values))
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
+            elif self.data_type == 'SD':
+                values = [i['relsd'] for i in self.pepdict]
+                if self.data_range in ['Fit to Data', 'Full Range', 'Half Range']:
+                    color_values = (min(values), max(values))
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
+            elif self.data_type == 'Uptake Diff':
+                values = [i['uptakediff'] for i in self.pepdict]
+                if self.data_range in ['Fit to Data', 'Full Range', 'Half Range']:
+                    color_values = (min(values), max(values))
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
+            elif self.data_type == 'Fractional Uptake':
+                values = [i['fracuptake'] for i in self.pepdict]
+                if self.data_range in ['Fit to Data']:
+                    color_values = (min(values), max(values))
+                elif self.data_range in ['Full Range']:
+                    color_values = (0, 1)
+                elif self.data_range in ['Half Range']:
+                    color_values = (0, 0.5)
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
+            elif self.data_type == 'Fractional SD (RSD)':
+                values = [i['fracsd'] for i in self.pepdict]
+                if self.data_range in ['Fit to Data']:
+                    color_values = (min(values), max(values))
+                elif self.data_range in ['Full Range']:
+                    color_values = (0, 1)
+                elif self.data_range in ['Half Range']:
+                    color_values = (0, 0.5)
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
+            elif self.data_type == 'Fractional Uptake Diff':
+                values = [i['fracuptakediff'] for i in self.pepdict]
+                if self.data_range in ['Fit to Data']:
+                    color_values = (min(values), max(values))
+                elif self.data_range in ['Full Range']:
+                    color_values = (-1, 1)
+                elif self.data_range in ['Half Range']:
+                    color_values = (-0.5, 0.5)
+                else:
+                    self.custom_min = float(self.parent.view.min_range.get())
+                    self.custom_max = float(self.parent.view.max_range.get())
+                    color_values = (self.custom_min, self.custom_max)
+            else:
+                print("Type Error")
+            if color_values[0] == 0 and color_values[1] == 0:
+                cval = 0
+                mval = 0
+            elif color_values[0] == 0 and color_values[1] != 0:
+                cval = 0
+                mval = 100 / color_values[1]
+            elif color_values[1] == color_values[0]:
+                print("Range Error")
+                cval = 0
+                mval = 0
+            else:
+                cval = float(100 / (-(color_values[1] / color_values[0]) + 1))
+                mval = float((100 - cval) / color_values[1])
+            self.color_values = color_values
+            self.cval = cval
+            self.mval = mval
+
+        # Obtains peptide uptake information
+        def get_peptide_data(self):
+            # Doesn't work for AVE exposure
+            if self.corrected == 'Yes':
+                self.uptakekey = 'Uptake_corr'
+                self.sdkey = 'Uptake_SD_corr'
+            else:
+                self.uptakekey = 'Uptake'
+                self.sdkey = 'Uptake SD'
+            # Get peptide list and exposure list
+            if self.data_type in ['Uptake Diff', 'Fractional Uptake Diff']:
+                if self.exposure == 'Ave':
+                    exposures1 = [float(i) for i in self.obj.data_nest[self.protein][self.state].keys()]
+                    exposures2 = [float(i) for i in self.obj.data_nest[self.protein][self.state2].keys()]
+                    exposures = list(set(exposures1).intersection(exposures2))
+                    exposure = min(exposures)
+                else:
+                    exposure = float(self.exposure)
+                dict0 = sorted([i['PepID'] for i in self.obj.data_nest[self.protein][self.state][exposure] if
+                                i['Fragment'] == ''])
+                dict1 = sorted([i['PepID'] for i in self.obj.data_nest[self.protein][self.state2][exposure] if
+                                i['Fragment'] == ''])
+                id_list = list(set(dict0).intersection(dict1))
+            else:
+                if self.exposure == 'Ave':
+                    exposures = [float(i) for i in self.obj.data_nest[self.protein][self.state].keys()]
+                    exposure = exposures[0]
+                    id_list = sorted([i['PepID'] for i in self.obj.data_nest[self.protein][self.state][exposure] if
+                                      i['Fragment'] == ''])
+                else:
+                    exposure = float(self.exposure)
+                    id_list = sorted([i['PepID'] for i in self.obj.data_nest[self.protein][self.state][exposure] if
+                                      i['Fragment'] == ''])
+
+            # Get data for all peptides
+            if self.exposure == 'Ave':
+                if 0 in exposures:
+                    exposures.remove(0)
+                for pepid in id_list:
+                    elist = []
+                    for e in sorted(exposures):
+                        elist.extend(
+                            [n for n in self.obj.data_nest[self.protein][self.state][e] if n["PepID"] == pepid])
+                    reluptake = np.mean([float(i[self.uptakekey]) for i in elist])
+                    relsd = np.mean([float(i[self.sdkey]) for i in elist])
+                    if elist[0]['MaxUptake'] == 0:
+                        fracuptake = 0
+                    else:
+                        fracuptake = np.mean([float(i[self.uptakekey]) / float(i['MaxUptake']) for i in elist])
+                    if float(elist[0][self.uptakekey]) == 0:
+                        fracsd = 0
+                    else:
+                        fracsd = np.mean([float(i[self.sdkey]) / float(i[self.uptakekey]) for i in elist])
+                    if self.data_type in ['Uptake Diff', 'Fractional Uptake Diff']:
+                        e2list = []
+                        for e in sorted(exposures):
+                            e2list.extend([n for n in self.obj.data_nest[self.protein][self.state2][e] if
+                                           n["PepID"] == pepid])
+                        uptakediff = np.mean(
+                            [float(j[self.uptakekey]) - float(i[self.uptakekey]) for j in e2list for i in elist])
+                        if e2list[0]['MaxUptake'] == 0:
+                            fracuptakediff = 0
+                        else:
+                            fracuptakediff = np.mean([float(j[self.uptakekey]) / float(j['MaxUptake']) -
+                                                      float(i[self.uptakekey]) / float(i['MaxUptake'])
+                                                      for j in e2list for i in elist])
+                        self.pepdict.append(
+                            {'Start': elist[0]['Start'], 'End': elist[0]['End'], 'Fragment': elist[0]['Fragment'],
+                             'Modification': elist[0]['Modification'], 'MaxUptake': elist[0]['MaxUptake'],
+                             'reluptake': reluptake, 'uptakediff': uptakediff, 'fracuptake': fracuptake,
+                             'fracuptakediff': fracuptakediff, 'relsd': relsd, 'fracsd': fracsd})
+                    else:
+                        self.pepdict.append(
+                            {'Start': elist[0]['Start'], 'End': elist[0]['End'], 'Fragment': elist[0]['Fragment'],
+                             'Modification': elist[0]['Modification'], 'MaxUptake': elist[0]['MaxUptake'],
+                             'reluptake': reluptake, 'fracuptake': fracuptake, 'relsd': relsd, 'fracsd': fracsd})
+            else:
+                for pepid in id_list:
+                    pep = \
+                    [n for n in self.obj.data_nest[self.protein][self.state][exposure] if n["PepID"] == pepid][0]
+                    reluptake = float(pep[self.uptakekey])
+                    relsd = float(pep[self.sdkey])
+                    if pep['MaxUptake'] == 0:
+                        fracuptake = 0
+                    else:
+                        fracuptake = float(pep[self.uptakekey]) / float(pep['MaxUptake'])
+                    if float(pep[self.uptakekey]) == 0:
+                        fracsd = 0
+                    else:
+                        fracsd = float(pep[self.sdkey]) / float(pep[self.uptakekey])
+                    if self.data_type in ['Uptake Diff', 'Fractional Uptake Diff']:
+                        pep2 = \
+                        [n for n in self.obj.data_nest[self.protein][self.state2][exposure] if n["PepID"] == pepid][
+                            0]
+                        uptakediff = float(pep2[self.uptakekey]) - float(pep[self.uptakekey])
+                        if pep2['MaxUptake'] == 0:
+                            fracuptakediff = 0
+                        else:
+                            fracuptakediff = (float(pep2[self.uptakekey]) - float(pep[self.uptakekey])) / float(
+                                pep['MaxUptake'])
+                        self.pepdict.append({'Start': pep['Start'], 'End': pep['End'], 'Fragment': pep['Fragment'],
+                                             'Modification': pep['Modification'], 'MaxUptake': pep['MaxUptake'],
+                                             'reluptake': reluptake, 'uptakediff': uptakediff,
+                                             'fracuptake': fracuptake,
+                                             'fracuptakediff': fracuptakediff, 'relsd': relsd, 'fracsd': fracsd})
+                    else:
+                        self.pepdict.append({'Start': pep['Start'], 'End': pep['End'], 'Fragment': pep['Fragment'],
+                                             'Modification': pep['Modification'], 'MaxUptake': pep['MaxUptake'],
+                                             'reluptake': reluptake, 'fracuptake': fracuptake, 'relsd': relsd,
+                                             'fracsd': fracsd})
+            if self.map_type == 'Heat':
+                if self.data_type in ['Fractional Uptake Diff', 'Uptake Diff']:
+                    if self.exposure == 'Ave':
+                        exposures1 = [float(i) for i in
+                                      self.obj.data_nest[self.protein][self.state].keys()]
+                        exposures2 = [float(i) for i in self.obj.data_nest[self.protein][self.state2].keys()]
+                        exposures = list(set(exposures1).intersection(exposures2))
+                        exposure = min(exposures)
+                        self.obj.assignData(self.protein, self.state, 'Ave', self.state2)
+                    else:
+                        exposure = float(self.exposure)
+                        self.obj.assignData(self.protein, self.state, exposure, self.state2)
+                else:
+
+                    if self.exposure == 'Ave':
+                        exposures = [float(i) for i in self.obj.data_nest[self.protein][self.state].keys()]
+                        exposure = exposures[0]
+                        self.obj.assignData(self.protein, self.state, 'Ave')
+                    else:
+                        exposure = float(self.exposure)
+                        self.obj.assignData(self.protein, self.state, exposure)
+                self.seq_nest2 = {}
+                for item in self.obj.seq_nest:
+                    if item['assigned'] == 1:
+                        if (item['pepmin'], item['pepmax']) in self.seq_nest2.keys():
+                            self.seq_nest2[(item['pepmin'], item['pepmax'])].append(item['pos'])
+                        else:
+                            self.seq_nest2[(item['pepmin'], item['pepmax'])] = [item['pos']]
+
+            self.sequence = self.obj.sequences[self.protein]
+            if not self.xs:
+                self.firstpos = min([i for i, j in enumerate(self.sequence) if j != "X"])
+                self.startspace = 0
+            else:
+                self.firstpos = min([i for i, j in enumerate(self.sequence) if j != "X"])
+                self.startspace = (self.firstpos) % self.line_length
+            self.sequence = self.sequence[self.firstpos:]
+
+        # Determines the height of the map depending on the line width, sequence length, and peptide coverage
+        def determine_levels(self):
+            self.seqlist = list(self.sequence)
+            self.seqlength = len(self.seqlist) + self.startspace
+            self.levels = int(self.seqlength / self.line_length) + 1
+            self.level_dict = {}
+            for pep in sorted(self.pepdict, key=itemgetter('Start')):
+                n = 0
+                while set(self.peplist[n]).intersection(list(range(pep['Start'], pep['End'] + 1))) != set([]):
+                    n = n + 1
+                    if n not in self.peplist.keys():
+                        self.peplist[n] = []
+                self.peplist[n] += range(pep['Start'], pep['End'] + 1)
+                # Added modification to peptide descriptor
+                self.level_dict[(pep['Start'], pep['End'], pep['Fragment'], pep['Modification'])] = n
+
+            if self.map_type == 'Coverage':
+                self.redun_dict = {}
+                self.spacing = 4
+                self.ymax = 2
+                for level in range(0, self.levels):
+                    self.redun_dict[level + 1] = 0
+                    range_min = (level * self.line_length) + 1
+                    range_max = (level + 1) * self.line_length
+                    range_list = list(range(range_min, range_max + 1))
+                    for n in self.peplist.keys():
+                        if set([resn - self.firstpos + self.startspace for resn in self.peplist[n] if
+                                range_min <= (resn - self.firstpos + self.startspace) <= range_max]).intersection(
+                                range_list) != set([]):
+                            self.redun_dict[level + 1] = n + 1
+                    self.ymax += (self.redun_dict[level + 1] + self.spacing)
+            elif self.map_type == 'Heat':
+                self.redun_dict = {}
+                for level in range(0, self.levels):
+                    self.redun_dict[level + 1] = 1
+                self.spacing = 4
+                self.ymax = (self.levels * (1 + self.spacing)) + 2
+            else:
+                print('type error')
+
+        # Saves plot to file
+        def export(self):
+            fig = plt.figure()
+            ax = fig.add_axes([0.01, 0.01, 0.98, 0.98])
+            fig.canvas.toolbar.pack_forget()
+            fig.set_dpi(300)
+            ax.axis("off")
+            self.create_axes_dnx(ax)
+            self.add_peptides_dnx(ax)
+            self.inline_colorbar(ax)
+            self.draw(ax, fig)
+            plt.draw()
+            if self.data_type in ['Uptake Diff', 'Fractional Uptake Diff']:
+                savefile = FileDialog.asksaveasfilename(
+                    title="Choose save location",
+                    initialfile=self.protein + "_" + str(self.state) + "-" + str(self.state2) + "_" + str(self.exposure)+"_Map.png",
+                    initialdir=self.parent.main.dir,
+                    filetypes=(("PNG", '*.png'), ("JPG", "*.jpg"), ("TIF", "*.tif"), ("all files", "*.*")))
+            else:
+                savefile = FileDialog.asksaveasfilename(
+                    title="Choose save location",
+                    initialfile=self.protein + "_" + str(self.state) + "_" + str(self.exposure) + "_Map.png",
+                    initialdir=self.parent.main.dir,
+                    filetypes=(("PNG", '*.png'), ("JPG", "*.jpg"), ("TIF", "*.tif"), ("all files", "*.*")))
+            if split(savefile)[0] != "":
+                self.parent.main.dir = split(savefile)[0]
+            if str(splitext(split(savefile)[1])[1]).lower() not in ['.png','.jpg','.tif']:
+                savefile = savefile + '.png'
+            fig.savefig(savefile, dpi=300, transparent=True)
+
+        # Initializes axis in DynamX Style
+        def create_axes_dnx(self, axis):
+            self.ycurlevel = self.ymax - 1.5
+            for n in range(0, self.levels):
+                level = n + 1
+                redundancy = self.redun_dict[level]
+                # If sequence is longer than the current level:
+                if level == 1:
+                    for m in range(self.startspace, (n + 1) * self.line_length):
+                        x = m % self.line_length
+                        axis.annotate(self.seqlist[m - self.startspace],
+                                      (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                                      color='black', fontsize=self.textsize, horizontalalignment='center',
+                                      verticalalignment='center',
+                                      family='monospace')
+                        if (m + 1 + self.firstpos - self.startspace) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos - self.startspace + 1),
+                                          (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                                          color='black', fontsize=self.textsize * 0.75,
+                                          horizontalalignment='center',
+                                          verticalalignment='center', family='monospace')
+                elif (self.seqlength - self.line_length * n) > self.line_length:
+                    for m in range(n * self.line_length, (n + 1) * self.line_length):
+                        x = m % self.line_length
+                        axis.annotate(self.seqlist[m - self.startspace],
+                                      (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                                      color='black', fontsize=self.textsize, horizontalalignment='center',
+                                      verticalalignment='center',
+                                      family='monospace')
+                        if (m + 1 + self.firstpos - self.startspace) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos - self.startspace + 1),
+                                          (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                                          color='black', fontsize=self.textsize * 0.75,
+                                          horizontalalignment='center',
+                                          verticalalignment='center', family='monospace')
+                # Conditions for final line
+                else:
+                    for m in range(n * self.line_length, self.seqlength):
+                        x = m % self.line_length
+                        axis.annotate(self.seqlist[m - self.startspace],
+                                      (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel + 0.5)),
+                                      color='black', fontsize=self.textsize, horizontalalignment='center',
+                                      verticalalignment='center',
+                                      family='monospace')
+                        if (m + 1 + self.firstpos) % 10 == 0:
+                            # 2020-06-04 m + 1 changed to m + firstpos + 1 to start map at first coverage
+                            axis.annotate(str(m + self.firstpos - self.startspace + 1),
+                                          (2 * (x + self.xpad + 0.5), 2 * (self.ycurlevel - 0.5)),
+                                          color='black', fontsize=self.textsize * 0.75,
+                                          horizontalalignment='center',
+                                          verticalalignment='center', family='monospace')
+                self.ycurlevel = self.ycurlevel - (redundancy + self.spacing)
+
+        # Add Bars to the Map in DynamX Style
+        def add_peptides_dnx(self, axis):
+            # Creating Boxes
+            if self.map_type == 'Coverage':
+                # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
+                # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
+                for pep in self.pepdict:
+                    vertices = []
+                    codes = []
+                    stretch = int((pep['End'] - self.firstpos + self.startspace - 1) / self.line_length) - int(
+                        (pep['Start'] - self.firstpos + self.startspace - 1) / self.line_length)
+                    peplevel = self.level_dict[(pep['Start'], pep['End'], pep['Fragment'], pep['Modification'])]
+                    if stretch > 0:
+                        level = int((pep['Start'] - self.firstpos + self.startspace - 1) / self.line_length) + 1
+                        yheight1 = -peplevel + self.ymax - (
+                                sum([self.redun_dict[j] for j in range(1, level)]) + (level) * self.spacing) + 0.5
+                        start50 = (pep[
+                                       'Start'] - self.firstpos + self.startspace - 1) % self.line_length + self.xpad
+                        codes += [Path.MOVETO] + [Path.LINETO] * 3
+                        vertices += [(2 * (self.line_length + self.xpad), 2 * yheight1),
+                                     (2 * start50, 2 * yheight1),
+                                     (2 * start50, 2 * (yheight1 + 0.75)),
+                                     (2 * (self.line_length + self.xpad), 2 * (yheight1 + 0.75))]
+
+                        for n in range(1, stretch):
+                            yheight = -peplevel + self.ymax - (
+                                        sum([self.redun_dict[j] for j in range(1, level + n)]) +
+                                        (level + n) * self.spacing) + 0.5
+                            codes += [Path.MOVETO] + [Path.LINETO] * 3
+                            vertices += [(2 * (self.line_length + self.xpad), 2 * yheight),
+                                         (2 * self.xpad, 2 * yheight),
+                                         (2 * self.xpad, 2 * (yheight + 0.75)),
+                                         (2 * (self.line_length + self.xpad), 2 * (yheight + 0.75))]
+                        yheight2 = -peplevel + self.ymax - (
+                                sum([self.redun_dict[j] for j in range(1, level + stretch)]) + (
+                                    level + stretch) * self.spacing) + 0.5
+                        stop50 = (pep['End'] - self.firstpos + self.startspace - 1) % self.line_length + 1
+                        codes += [Path.MOVETO] + [Path.LINETO] * 3
+                        vertices += [(2 * self.xpad, 2 * yheight2), (2 * stop50, 2 * yheight2),
+                                     (2 * stop50, 2 * (yheight2 + 0.75)),
+                                     (2 * self.xpad, 2 * (yheight2 + 0.75))]
+                    else:
+                        level = int((pep['Start'] - self.firstpos + self.startspace - 1) / self.line_length) + 1
+                        yheight = -peplevel + self.ymax - (
+                                sum([self.redun_dict[j] for j in range(1, level)]) + level * self.spacing) + 0.5
+                        start50 = (pep[
+                                       'Start'] - self.firstpos + self.startspace - 1) % self.line_length + self.xpad
+                        stop50 = (pep['End'] - self.firstpos + self.startspace - 1) % self.line_length + 1
+                        codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
+                        vertices += [(2 * start50, 2 * yheight), (2 * stop50, 2 * yheight),
+                                     (2 * stop50, 2 * (yheight + 0.75)),
+                                     (2 * start50, 2 * (yheight + 0.75)),
+                                     (0, 0)]
+                    vertices = array(vertices, float)
+                    if float(pep['MaxUptake']) == 0:
+                        color_index = 0
+                    else:
+                        if self.data_type == 'Uptake':
+                            color_index = int(self.mval * float(pep['reluptake']) + self.cval)
+                        elif self.data_type == 'SD':
+                            color_index = int(self.mval * float(pep['relsd']) + self.cval)
+                        elif self.data_type == 'Uptake Diff':
+                            color_index = int(self.mval * pep['uptakediff'] + self.cval)
+                        elif self.data_type == 'Fractional Uptake':
+                            color_index = int(self.mval * pep['fracuptake'] + self.cval)
+                        elif self.data_type == 'Fractional SD (RSD)':
+                            color_index = int(self.mval * pep['fracsd'] + self.cval)
+                        elif self.data_type == 'Fractional Uptake Diff':
+                            color_index = int(self.mval * pep['fracuptakediff'] + self.cval)
+                        else:
+                            print("Type Error")
+                    if color_index < 0:
+                        color_index = 0
+                    elif color_index >= 100:
+                        color_index = 99
+                    color = self.rearranged_colors[color_index]
+                    axis.add_patch(
+                        PathPatch(Path(vertices, codes), facecolor=color, linewidth=1, edgecolor='grey'))
+            elif self.map_type == 'Heat':
+                # 2020-06-04 pep['Start'] - 1 changed to pep['Start'] - firstpos - 1
+                # 2020-06-04 pep['End'] - 1 changed to pep['End'] - firstpos - 1
+                for peptide in self.seq_nest2.keys():
+                    pep = [n for n in self.pepdict if (n["Start"] == peptide[0] and n['End'] == peptide[1])][0]
+                    start = min(self.seq_nest2[peptide])
+                    end = max(self.seq_nest2[peptide])
+                    vertices = []
+                    codes = []
+                    self.redundancy = 1
+
+                    stretch = int((end - self.firstpos + self.startspace - 1) / self.line_length) - int(
+                        (start - self.firstpos + self.startspace - 1) / self.line_length)
+                    if stretch > 0:
+                        level = int((start - self.firstpos + self.startspace - 1) / self.line_length) + 1
+                        yheight1 = self.ymax - (level * (self.redundancy + self.spacing)) + 0.5
+                        start50 = (start - self.firstpos + self.startspace - 1) % self.line_length + self.xpad
+                        codes += [Path.MOVETO] + [Path.LINETO] * 3
+                        vertices += [(2 * (self.line_length + self.xpad), 2 * yheight1),
+                                     (2 * start50, 2 * yheight1), (2 * start50, 2 * (yheight1 + 2)),
+                                     (2 * (self.line_length + self.xpad), 2 * (yheight1 + 2))]
+                        for n in range(1, stretch):
+                            yheight = self.ymax - ((level + n) * (self.redundancy + self.spacing)) + 0.5
+                            codes += [Path.MOVETO] + [Path.LINETO] * 3
+                            vertices += [(2 * (self.line_length + self.xpad), 2 * yheight),
+                                         (2 * self.xpad, 2 * yheight),
+                                         (2 * self.xpad, 2 * (yheight + 0.75)),
+                                         (2 * (self.line_length + self.xpad), 2 * (yheight + 0.75))]
+                        yheight2 = self.ymax - ((level + stretch) * (self.redundancy + self.spacing)) + 0.5
+                        stop50 = (end - self.firstpos + self.startspace - 1) % self.line_length + 1
+                        codes += [Path.MOVETO] + [Path.LINETO] * 3
+                        vertices += [(2 * self.xpad, 2 * yheight2), (2 * stop50, 2 * yheight2),
+                                     (2 * stop50, 2 * (yheight2 + 2)), (2 * self.xpad, 2 * (yheight2 + 2))]
+                    else:
+                        level = int((start - self.firstpos + self.startspace - 1) / self.line_length) + 1
+                        yheight = self.ymax - (level * (self.redundancy + self.spacing)) + 0.5
+                        start50 = (start - self.firstpos + self.startspace - 1) % self.line_length + self.xpad
+                        stop50 = (end - self.firstpos + self.startspace - 1) % self.line_length + 1
+                        codes += [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
+                        vertices += [(2 * start50, 2 * yheight), (2 * stop50, 2 * yheight),
+                                     (2 * stop50, 2 * (yheight + 2)),
+                                     (2 * start50, 2 * (yheight + 2)),
+                                     (0, 0)]
+                    vertices = np.array(vertices, float)
+                    if float(pep['MaxUptake']) == 0:
+                        color_index = 0
+                    else:
+                        if self.data_type == 'Uptake':
+                            color_index = int(self.mval * float(pep['reluptake']) + self.cval)
+                        elif self.data_type == 'SD':
+                            color_index = int(self.mval * float(pep['relsd']) + self.cval)
+                        elif self.data_type == 'Uptake Diff':
+                            color_index = int(self.mval * pep['uptakediff'] + self.cval)
+                        elif self.data_type == 'Fractional Uptake':
+                            color_index = int(self.mval * pep['fracuptake'] + self.cval)
+                        elif self.data_type == 'Fractional SD (RSD)':
+                            color_index = int(self.mval * pep['fracsd'] + self.cval)
+                        elif self.data_type == 'Fractional Uptake Diff':
+                            color_index = int(self.mval * pep['fracuptakediff'] + self.cval)
+                        else:
+                            print("Type Error")
+                        if color_index < 0:
+                            color_index = 0
+                        elif color_index >= 100:
+                            color_index = 99
+                        color = self.rearranged_colors[color_index]
+                    axis.add_patch(PathPatch(Path(vertices, codes), facecolor=color, edgecolor='grey'))
+
+        # Add colorbar inline to the saved plot
+        def inline_colorbar(self, axis):
+            col_code = [Path.MOVETO] + [Path.LINETO] * 3 + [Path.CLOSEPOLY]
+            col_vert = [(self.line_length - 25, -4), (self.line_length + 25, -4), (self.line_length + 25, 0),
+                        (self.line_length - 25, 0), (self.line_length - 25, -4)]
+            patch = PathPatch(Path(col_vert, col_code), facecolor='none', edgecolor='grey')
+            axis.add_patch(patch)
+            # Fixed 2020-06-04 for colorbar linelength issue
+            im = axis.imshow([[0, 1], [0., 1]], interpolation='bilinear', aspect='auto',
+                             extent=(self.line_length - 25, self.line_length + 25, -4, 0), cmap=self.newmap,
+                             clip_path=patch, clip_on=True)
+            axis.annotate(str(round(self.color_values[0], 2)), (self.line_length - 30, -2),
+                          color='black', fontsize=self.textsize, horizontalalignment='center',
+                          verticalalignment='center', family='monospace')
+            axis.annotate(str(round(self.color_values[1], 2)), (self.line_length + 30, -2),
+                          color='black', fontsize=self.textsize, horizontalalignment='center',
+                          verticalalignment='center', family='monospace')
+            im.set_clip_path(patch)
+
+        # Draw map
+        def draw(self, axis, figure):
+            axis.set_xbound(0, self.line_length + self.xpad * 2)
+            axis.set_xlim((0, self.line_length * 2))
+            axis.set_ylim((-4, self.ymax * 2))
+            figure.set_size_inches(12 * self.line_length / 50, 12 * self.ymax / 61)
+            figure.set_dpi(72)
+
 
 class Butterfly():
     '''
@@ -3713,3 +4382,4 @@ if __name__ == '__main__':
             break
         except UnicodeDecodeError:
             pass
+
