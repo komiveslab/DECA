@@ -3,10 +3,10 @@ DECA: Deuterium Exchange Correction and Analysis
 
 Binaries: 
 
-macOS: https://github.com/komiveslab/DECA/releases/download/1.15/DECA_v115_macOS.dmg
+macOS: https://github.com/komiveslab/DECA/releases/download/1.16/DECAv116_macOS.dmg
   
-Tested on OSX El Capitan and macOS Catalina
+Tested on OSX El Capitan and macOS Monterey
 
-Windows: https://github.com/komiveslab/DECA/releases/download/1.15/DECA_v115_WIN.exe
+Windows: https://github.com/komiveslab/DECA/releases/download/1.16/DECAv116_WIN.exe
 
 Tested on Windows 10
