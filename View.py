@@ -1062,17 +1062,33 @@ class Map():
         max_range.grid(row=10, column=1)
         max_range['state'] = 'disabled'
 
+        separator2 = ttk.Separator(frame1)
+        separator2.grid(row=11,column=0,columnspan=2)
+
         xlim_label = Tk.Label(frame1,text='''Row Length:''')
-        xlim_label.grid(row=11,column=0)
+        xlim_label.grid(row=12,column=0)
 
         xlim_entry = Tk.Entry(frame1)
-        xlim_entry.grid(row=11,column=1)
+        xlim_entry.grid(row=12,column=1)
 
-        xs_label = Tk.Label(frame1, text='''N-term Gap:''')
-        xs_label.grid(row=12, column=0)
+        invert_label = Tk.Label(frame1, text='''Invert Axes:''')
+        invert_label.grid(row=13, column=0)
 
-        xs_button = ttk.Checkbutton(frame1)
-        xs_button.grid(row=12, column=1)
+        invert_button = ttk.Checkbutton(frame1)
+        invert_button.grid(row=13, column=1)
+
+        lines_label = Tk.Label(frame1, text='''Add Axis Lines:''')
+        lines_label.grid(row=14, column=0)
+
+        lines_button = ttk.Checkbutton(frame1)
+        lines_button.grid(row=14, column=1)
+
+        pep_info_label = Tk.Label(frame1, text='''Show Peptide Info:''')
+        pep_info_label.grid(row=15, column=0)
+
+        info_combobox = ttk.Combobox(frame1)
+        info_combobox.grid(row=15, column=1)
+        info_combobox['state'] = 'readonly'
 
         cov_button = ttk.Button(frame2,text='''Show Coverage Map''')
         cov_button.pack(side=Tk.LEFT)
@@ -1114,7 +1130,9 @@ class Map():
         self.max_range = max_range
         self.cov_save = cov_save
         self.heat_save = heat_save
-        self.xs_button = xs_button
+        self.lines_button = lines_button
+        self.invert_button = invert_button
+        self.info_combobox = info_combobox
 
 class Butterfly():
     def __init__(self, main):
